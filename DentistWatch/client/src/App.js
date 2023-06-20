@@ -1,5 +1,5 @@
 import React from "react";
-import {BrowserRouter, Routes} from "react-router-dom";
+import {BrowserRouter, Route, Routes} from "react-router-dom";
 import NavBar from "./components/NavBar";
 import Footer from "./components/Footer";
 import Box from "@mui/material/Box";
@@ -11,9 +11,8 @@ function App() {
             <Box sx={{height: '3000px', backgroundColor:'red'}}></Box>
             <BrowserRouter>
                 <Routes>
-                    {/*<Route exact path="/" element={<RecordList />} />*/}
-                    {/*<Route path="/edit/:id" element={<Edit />} />*/}
-                    {/*<Route path="/create" element={<Create />} />*/}
+                    <Route exact path="/" element={<HomePage />} />
+                    <Route path="/create" element={<AddEntry />} />
                 </Routes>
             </BrowserRouter>
             <Footer/>
