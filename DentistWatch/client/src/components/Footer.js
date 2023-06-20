@@ -8,7 +8,7 @@ import {Grid} from "@mui/material";
 export default function Footer() {
     return (
         <Box>
-            <AppBar position="fixed" color="primary" sx={{top: 'auto', bottom: 0, height: '3rem'}}>
+            <AppBar position="static" color="primary" >
                 <Toolbar>
                     <Grid container>
                         <Grid item xs={9}>
@@ -26,6 +26,11 @@ export default function Footer() {
                                 <Grid item xs={2}>
                                     <Typography variant="subtitle1" component="div">
                                         Contact
+                                    </Typography>
+                                </Grid>
+                                <Grid item xs={2}>
+                                    <Typography variant="subtitle1" component="div">
+                                        Doctor Watch
                                     </Typography>
                                 </Grid>
                             </Grid>
