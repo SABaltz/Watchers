@@ -1,5 +1,8 @@
 import React from 'react'
+import Box from "@mui/material/Box";
 
 export default function HomePage() {
-    return(<div>test</div>)
+    return (
+        <Box sx={{height: '3000px', backgroundColor: 'red'}}></Box>
+    )
 }
