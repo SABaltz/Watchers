@@ -6,7 +6,6 @@ import Footer from "./components/Footer";
 function App() {
     return (
         <>
-            <div>test</div>
             <NavBar/>
             <BrowserRouter>
                 <Routes>
