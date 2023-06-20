@@ -40,7 +40,7 @@ function ResponsiveAppBar() {
         <AppBar position="static">
             <Container maxWidth="xl">
                 <Toolbar disableGutters>
-                    <AdbIcon sx={{display: {xs: 'none', md: 'flex'}, mr: 1}}/>
+                    {/*<AdbIcon sx={{display: {xs: 'none', md: 'flex'}, mr: 1}}/>*/}
                     <Typography
                         variant="h6"
                         noWrap
@@ -49,9 +49,9 @@ function ResponsiveAppBar() {
                         sx={{
                             mr: 2,
                             display: {xs: 'none', md: 'flex'},
-                            fontFamily: 'monospace',
+                            // fontFamily: 'monospace',
                             fontWeight: 700,
-                            letterSpacing: '.3rem',
+                            letterSpacing: '.1rem',
                             color: 'inherit',
                             textDecoration: 'none'
                         }}>
