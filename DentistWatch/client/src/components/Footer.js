@@ -7,27 +7,31 @@ import {Grid} from "@mui/material";
 
 export default function Footer() {
     return (
-        <Box sx={{flexGrow: 1}}>
-            <AppBar osition="fixed" color="primary" sx={{top: 'auto', bottom: 0}}>
+        <Box>
+            <AppBar position="fixed" color="primary" sx={{top: 'auto', bottom: 0, height: '3rem'}}>
                 <Toolbar>
                     <Grid container>
-                        <Grid item xs={2}>
-                            <Typography variant="h6" component="div" sx={{flexGrow: 1}}>
-                                Home
-                            </Typography>
+                        <Grid item xs={9}>
+                            <Grid container>
+                                <Grid item xs={2}>
+                                    <Typography variant="subtitle1" component="div">
+                                        Home
+                                    </Typography>
+                                </Grid>
+                                <Grid item xs={2}>
+                                    <Typography variant="subtitle1" component="div">
+                                        About
+                                    </Typography>
+                                </Grid>
+                                <Grid item xs={2}>
+                                    <Typography variant="subtitle1" component="div">
+                                        Contact
+                                    </Typography>
+                                </Grid>
+                            </Grid>
                         </Grid>
-                        <Grid item xs={2}>
-                            <Typography variant="h6" component="div" sx={{flexGrow: 1}}>
-                                About
-                            </Typography>
-                        </Grid>
-                        <Grid item xs={2}>
-                            <Typography variant="h6" component="div" sx={{flexGrow: 1}}>
-                                Contact
-                            </Typography>
-                        </Grid>
-                        <Grid itexs={2}>
-                            <Typography variant="h6" component="div" sx={{flexGrow: 1}}>
+                        <Grid item xs={3}>
+                            <Typography variant="subtitle1" component="div">
                                 @Dentist Watch | All Rights Reserved
                             </Typography>
                         </Grid>
