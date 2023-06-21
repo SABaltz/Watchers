@@ -1,5 +1,5 @@
 import React from 'react'
 
-export default function AddEntry() {
+export default function Report() {
     return (<div>test</div>)
 }

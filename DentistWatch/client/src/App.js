@@ -3,7 +3,7 @@ import {BrowserRouter, Route, Routes} from "react-router-dom";
 import NavBar from "./components/NavBar";
 import Footer from "./components/Footer";
 import HomePage from "./components/HomePage";
-import AddEntry from "./components/AddEntry";
+import Report from "./components/Report";
 
 function App() {
     return (
@@ -12,7 +12,7 @@ function App() {
             <BrowserRouter>
                 <Routes>
                     <Route exact path="/" element={<HomePage/>}/>
-                    <Route path="/add" element={<AddEntry/>}/>
+                    <Route path="/add" element={<Report/>}/>
                 </Routes>
             </BrowserRouter>
             <Footer/>

@@ -13,10 +13,10 @@ import Tooltip from '@mui/material/Tooltip';
 import MenuItem from '@mui/material/MenuItem';
 import {useState} from "react";
 
-const pages = ['Map', 'Search', 'Add', 'Worst 100'];
+const pages = [{text: 'Map', href: '/map'}, {text: 'Search', href: '/search'}, {text: 'Report', href: '/report'}, {text: 'Worst 100', href: '/worst100'}];
 const settings = ['Profile', 'Account', 'Logout'];
 
-function ResponsiveAppBar() {
+export default function NavBar() {
     const [anchorElNav, setAnchorElNav] = useState(null);
     const [anchorElUser, setAnchorElUser] = useState(null);
 
@@ -86,9 +86,9 @@ function ResponsiveAppBar() {
                                 display: {xs: 'block', md: 'none'},
                             }}
                         >
-                            {pages.map((page) => (
-                                <MenuItem key={page} onClick={handleCloseNavMenu}>
-                                    <Typography textAlign="center">{page}</Typography>
+                            {pages.map((page, index) => (
+                                <MenuItem key={index} onClick={handleCloseNavMenu}>
+                                    <Typography textAlign="center" href={page.href}>{page.text}</Typography>
                                 </MenuItem>
                             ))}
                         </Menu>
@@ -112,13 +112,14 @@ function ResponsiveAppBar() {
                         Dentist Watch
                     </Typography>
                     <Box sx={{flexGrow: 1, display: {xs: 'none', md: 'flex'}}}>
-                        {pages.map((page) => (
+                        {pages.map((page, index) => (
                             <Button
-                                key={page}
+                                key={index}
+                                href={page.href}
                                 onClick={handleCloseNavMenu}
                                 sx={{my: 2, color: 'white', display: 'block'}}
                             >
-                                {page}
+                                {page.text}
                             </Button>
                         ))}
                     </Box>
@@ -157,5 +158,3 @@ function ResponsiveAppBar() {
         </AppBar>
     );
 }
-
-export default ResponsiveAppBar;
