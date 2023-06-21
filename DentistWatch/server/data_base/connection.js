@@ -7,7 +7,9 @@ const client = new MongoClient(connectionString);
 let conn;
 try {
     conn = await client.connect();
+    console.log("Database successfully connected")
 } catch(e) {
+    console.log("Turn off your vpn")
     console.error(e);
 }
 
