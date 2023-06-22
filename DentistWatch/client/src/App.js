@@ -4,6 +4,7 @@ import NavBar from "./components/NavBar";
 import Footer from "./components/Footer";
 import HomePage from "./components/HomePage";
 import Report from "./components/Report";
+import List from "./components/List";
 
 function App() {
     return (
@@ -13,6 +14,7 @@ function App() {
                 <Routes>
                     <Route exact path="/" element={<HomePage/>}/>
                     <Route path="/report" element={<Report/>}/>
+                    <Route path="/list" element={<List/>}/>
                 </Routes>
             </BrowserRouter>
             <Footer/>

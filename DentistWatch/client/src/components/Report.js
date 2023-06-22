@@ -22,7 +22,7 @@ export default function Report() {
         // When a post request is sent to the create url, we'll add a new record to the database.
         const newPerson = {...form};
 
-        await fetch("http://164.92.96.1:80/record", {
+        await fetch("http://localhost:5055/record", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
