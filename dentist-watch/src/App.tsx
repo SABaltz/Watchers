@@ -1,8 +1,9 @@
 import React from 'react';
-import {Application} from 'common/export'
+import { Button } from "common";
+
 function App() {
   return (
-    <Application></Application>
+    <Button></Button>
   );
 }
 
