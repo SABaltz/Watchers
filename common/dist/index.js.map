@@ -1,1 +1,0 @@
-{"version":3,"file":"index.js","sources":["../src/components/Button/Button.tsx"],"sourcesContent":["import React from \"react\";\n\nexport default function Button() {\n    return (<div>test</div>)\n}\n"],"names":[],"mappings":";;;;AAEc,SAAU,MAAM,GAAA;IAC1B,QAAQ,KAAe,CAAA,aAAA,CAAA,KAAA,EAAA,IAAA,EAAA,MAAA,CAAA,EAAC;AAC5B;;;;"}
