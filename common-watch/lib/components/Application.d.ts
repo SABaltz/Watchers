@@ -1,2 +1,4 @@
 import React from "react";
-export default function Application(): React.JSX.Element;
+export default function Application({ projectName }: {
+    projectName: any;
+}): React.JSX.Element;

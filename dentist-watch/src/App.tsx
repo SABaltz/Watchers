@@ -4,7 +4,7 @@ import {Application} from "common-watch";
 function App() {
     return (
         <>
-            <Application></Application>
+            <Application projectName={"Dentist Watch"}></Application>
         </>
     );
 }
