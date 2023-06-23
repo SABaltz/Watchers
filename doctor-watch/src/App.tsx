@@ -1,5 +1,5 @@
 import React from 'react';
-import Application from '../../watch-common/Application'
+import Application from '../../common/Application'
 
 function App() {
     return (

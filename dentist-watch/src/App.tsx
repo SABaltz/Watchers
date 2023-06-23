@@ -1,5 +1,5 @@
 import React from 'react';
-import {Application} from 'watch-common/export'
+import {Application} from 'common/export'
 function App() {
   return (
     <Application></Application>
