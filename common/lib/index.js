@@ -3,7 +3,7 @@
 var React = require('react');
 
 function Button() {
-    return (React.createElement("div", null, "test5"));
+    return (React.createElement("div", null, "test3"));
 }
 
 exports.Button = Button;
