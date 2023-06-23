@@ -1,3 +1,3 @@
-import Button from "./components/Button/Button";
+import Application from "./components/Application";
 
-export { Button };
+export {Application}

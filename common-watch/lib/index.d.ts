@@ -1,5 +1,5 @@
 import React from 'react';
 
-declare function Button(): React.JSX.Element;
+declare function Application(): React.JSX.Element;
 
-export { Button };
+export { Application };

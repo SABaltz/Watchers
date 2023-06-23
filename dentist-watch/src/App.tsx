@@ -1,10 +1,10 @@
 import React from 'react';
-import {Button} from "common-watch";
+import {Application} from "common-watch";
 
 function App() {
     return (
         <>
-            <Button></Button>
+            <Application></Application>
         </>
     );
 }
