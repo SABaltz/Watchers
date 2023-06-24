@@ -55,7 +55,7 @@ export default function NavBar() {
                             textDecoration: 'none',
                         }}
                     >
-                        LOGO
+                        Test
                     </Typography>
 
                     <Box sx={{ flexGrow: 1, display: { xs: 'flex', md: 'none' } }}>
@@ -111,7 +111,7 @@ export default function NavBar() {
                             textDecoration: 'none',
                         }}
                     >
-                        LOGO
+                        Test
                     </Typography>
                     <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' } }}>
                         {pages.map((page) => (
@@ -157,5 +157,6 @@ export default function NavBar() {
                 </Toolbar>
             </Container>
         </AppBar>
+
     );
 }

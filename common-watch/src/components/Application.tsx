@@ -8,7 +8,7 @@ import NavBar from "./NavBar";
 export default function Application({projectName}) {
     return (
         <>
-            <NavBar name={projectName}/>
+            <NavBar />
             {/*<BrowserRouter>*/}
             {/*    <Routes>*/}
             {/*        <Route exact path="/" element={<HomePage/>}/>*/}
