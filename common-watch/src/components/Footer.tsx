@@ -3,11 +3,11 @@ import AppBar from "@mui/material/AppBar";
 import Box from "@mui/material/Box";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
-import {Grid} from "@mui/material";
+import {Grid, Link} from "@mui/material";
 import {ProjectContext} from "./Application";
 
 export default function Footer() {
-    const { projectName, alternativeSite } = useContext(ProjectContext);
+    const {projectName, alternativeSite} = useContext(ProjectContext);
     return (
         <Box>
             <AppBar position="static" color="primary">
@@ -31,8 +31,11 @@ export default function Footer() {
                                     </Typography>
                                 </Grid>
                                 <Grid item xs={2}>
-                                    <Typography variant="subtitle1" component="div">
-                                        {alternativeSite}
+                                    <Typography textAlign="center">
+                                        <Link sx={{color: 'white'}}
+                                              href={`www.${alternativeSite.toLowerCase().trim()}.org`}>
+                                            {alternativeSite}
+                                        </Link>
                                     </Typography>
                                 </Grid>
                             </Grid>
