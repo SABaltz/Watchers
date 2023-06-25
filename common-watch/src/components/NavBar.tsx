@@ -13,12 +13,16 @@ import Tooltip from '@mui/material/Tooltip';
 import MenuItem from '@mui/material/MenuItem';
 // import AdbIcon from '@mui/icons-material/Adb';
 import {ProjectContext} from "./Application";
+import {Link} from "@mui/material";
 
-const pages = ['Products', 'Pricing', 'Blog'];
-const settings = ['Profile', 'Account', 'Dashboard', 'Logout'];
+const pages = [{text: 'Map', href: '/map'}, {text: 'Search', href: '/search'}, {
+    text: 'Report',
+    href: '/report'
+}, {text: 'Worst 100', href: '/worst100'}];
+const settings = ['Profile', 'Account', 'Logout'];
 
 export default function NavBar() {
-    const { projectName, alternativeSite } = useContext(ProjectContext);
+    const {projectName} = useContext(ProjectContext);
 
     const [anchorElNav, setAnchorElNav] = useState(null);
     const [anchorElUser, setAnchorElUser] = useState(null);
@@ -91,7 +95,11 @@ export default function NavBar() {
                         >
                             {pages.map((page, index) => (
                                 <MenuItem key={index} onClick={handleCloseNavMenu}>
-                                    <Typography textAlign="center" href={page.href}>{page.text}</Typography>
+                                    <Typography textAlign="center">
+                                        <Link href={page.href}>
+                                            {page.text}
+                                        </Link>
+                                    </Typography>
                                 </MenuItem>
                             ))}
                         </Menu>
