@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type {Meta, StoryObj} from '@storybook/react';
 
 import Application from "../components/Application";
 
@@ -10,5 +10,16 @@ const meta = {
 } satisfies Meta<typeof Application>;
 
 export default meta;
-type Story = StoryObj<typeof meta>;
-export const Primary: Story = {};
+type Story = StoryObj<typeof Application>;
+
+export const DentistWatch: Story = {
+  args: {
+    projectName: 'Dentist Watch',
+  },
+};
+
+export const DoctorWatch: Story = {
+  args: {
+    projectName: 'Doctor Watch',
+  },
+};

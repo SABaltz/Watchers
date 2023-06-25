@@ -1,6 +1,6 @@
 import * as React from 'react';
-import React__default, { forwardRef, useContext, Children, isValidElement, cloneElement } from 'react';
-import require$$2, { jsxs, jsx } from 'react/jsx-runtime';
+import React__default, {Children, cloneElement, forwardRef, isValidElement, useContext} from 'react';
+import require$$2, {jsx, jsxs} from 'react/jsx-runtime';
 import * as ReactDOM from 'react-dom';
 import ReactDOM__default from 'react-dom';
 
@@ -330,7 +330,7 @@ function requireObjectAssign () {
 			// Detect buggy property enumeration order in older V8 versions.
 
 			// https://bugs.chromium.org/p/v8/issues/detail?id=4118
-			var test1 = new String('abc');  // eslint-disable-line no-new-wrappers
+			var test1 = String('abc');  // eslint-disable-line no-new-wrappers
 			test1[5] = 'de';
 			if (Object.getOwnPropertyNames(test1)[0] === '5') {
 				return false;
@@ -11217,7 +11217,7 @@ const Paper = /*#__PURE__*/React.forwardRef(function Paper(inProps, ref) {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     const theme = useTheme();
     if (theme.shadows[elevation] === undefined) {
-      console.error([`MUI: The elevation provided <Paper elevation={${elevation}}> is not available in the theme.`, `Please make sure that \`theme.shadows[${elevation}]\` is defined.`].join('\n'));
+      console.error([`The elevation provided <Paper elevation={${elevation}}> is not available in the theme.`, `Please make sure that \`theme.shadows[${elevation}]\` is defined.`].join('\n'));
     }
   }
   return /*#__PURE__*/jsx(PaperRoot, _extends({
@@ -18118,6 +18118,7 @@ default_1 = Adb.default = _default;
 var pages = ['Products', 'Pricing', 'Blog'];
 var settings = ['Profile', 'Account', 'Dashboard', 'Logout'];
 function NavBar() {
+    var text = useContext(ProjectContext);
     var _a = React__default.useState(null), anchorElNav = _a[0], setAnchorElNav = _a[1];
     var _b = React__default.useState(null), anchorElUser = _b[0], setAnchorElUser = _b[1];
     var handleOpenNavMenu = function (event) {
@@ -18134,21 +18135,31 @@ function NavBar() {
     };
     return (React__default.createElement(AppBar$1, { position: "static" },
         React__default.createElement(Container$1, { maxWidth: "xl" },
-            React__default.createElement(Toolbar$1, { disableGutters: true },
-                React__default.createElement(default_1, { sx: { display: { xs: 'none', md: 'flex' }, mr: 1 } }),
-                React__default.createElement(Typography$1, { variant: "h6", noWrap: true, component: "a", href: "/", sx: {
+            React__default.createElement(Toolbar$1, {disableGutters: true},
+                React__default.createElement(default_1, {sx: {display: {xs: 'none', md: 'flex'}, mr: 1}}),
+                React__default.createElement(Typography$1, {
+                    variant: "h6", noWrap: true, component: "a", href: "/", sx: {
                         mr: 2,
-                        display: { xs: 'none', md: 'flex' },
+                        display: {xs: 'none', md: 'flex'},
                         fontFamily: 'monospace',
                         fontWeight: 700,
                         letterSpacing: '.3rem',
                         color: 'inherit',
                         textDecoration: 'none',
-                    } }, "Dentist Watch"),
-                React__default.createElement(Box$1, { sx: { flexGrow: 1, display: { xs: 'flex', md: 'none' } } },
-                    React__default.createElement(IconButton$1, { size: "large", "aria-label": "account of current user", "aria-controls": "menu-appbar", "aria-haspopup": "true", onClick: handleOpenNavMenu, color: "inherit" },
+                    }
+                }, text),
+                React__default.createElement(Box$1, {sx: {flexGrow: 1, display: {xs: 'flex', md: 'none'}}},
+                    React__default.createElement(IconButton$1, {
+                            size: "large",
+                            "aria-label": "account of current user",
+                            "aria-controls": "menu-appbar",
+                            "aria-haspopup": "true",
+                            onClick: handleOpenNavMenu,
+                            color: "inherit"
+                        },
                         React__default.createElement(default_1$1, null)),
-                    React__default.createElement(Menu$2, { id: "menu-appbar", anchorEl: anchorElNav, anchorOrigin: {
+                    React__default.createElement(Menu$2, {
+                        id: "menu-appbar", anchorEl: anchorElNav, anchorOrigin: {
                             vertical: 'bottom',
                             horizontal: 'left',
                         }, keepMounted: true, transformOrigin: {
@@ -18158,23 +18169,40 @@ function NavBar() {
                             display: { xs: 'block', md: 'none' },
                         } }, pages.map(function (page) { return (React__default.createElement(MenuItem$1, { key: page, onClick: handleCloseNavMenu },
                         React__default.createElement(Typography$1, { textAlign: "center" }, page))); }))),
-                React__default.createElement(default_1, { sx: { display: { xs: 'flex', md: 'none' }, mr: 1 } }),
-                React__default.createElement(Typography$1, { variant: "h5", noWrap: true, component: "a", href: "", sx: {
+                React__default.createElement(default_1, {sx: {display: {xs: 'flex', md: 'none'}, mr: 1}}),
+                React__default.createElement(Typography$1, {
+                    variant: "h5", noWrap: true, component: "a", href: "", sx: {
                         mr: 2,
-                        display: { xs: 'flex', md: 'none' },
+                        display: {xs: 'flex', md: 'none'},
                         flexGrow: 1,
                         fontFamily: 'monospace',
                         fontWeight: 700,
                         letterSpacing: '.3rem',
                         color: 'inherit',
                         textDecoration: 'none',
-                    } }, "Dentist Watch"),
-                React__default.createElement(Box$1, { sx: { flexGrow: 1, display: { xs: 'none', md: 'flex' } } }, pages.map(function (page) { return (React__default.createElement(Button$1, { key: page, onClick: handleCloseNavMenu, sx: { my: 2, color: 'white', display: 'block' } }, page)); })),
-                React__default.createElement(Box$1, { sx: { flexGrow: 0 } },
-                    React__default.createElement(Tooltip$1, { title: "Open settings" },
-                        React__default.createElement(IconButton$1, { onClick: handleOpenUserMenu, sx: { p: 0 } },
-                            React__default.createElement(Avatar$1, { alt: "Remy Sharp", src: "/static/images/avatar/2.jpg" }))),
-                    React__default.createElement(Menu$2, { sx: { mt: '45px' }, id: "menu-appbar", anchorEl: anchorElUser, anchorOrigin: {
+                    }
+                }, text),
+                React__default.createElement(Box$1, {
+                    sx: {
+                        flexGrow: 1,
+                        display: {xs: 'none', md: 'flex'}
+                    }
+                }, pages.map(function (page) {
+                    return (React__default.createElement(Button$1, {
+                        key: page,
+                        onClick: handleCloseNavMenu,
+                        sx: {my: 2, color: 'white', display: 'block'}
+                    }, page));
+                })),
+                React__default.createElement(Box$1, {sx: {flexGrow: 0}},
+                    React__default.createElement(Tooltip$1, {title: "Open settings"},
+                        React__default.createElement(IconButton$1, {onClick: handleOpenUserMenu, sx: {p: 0}},
+                            React__default.createElement(Avatar$1, {
+                                alt: "Remy Sharp",
+                                src: "/static/images/avatar/2.jpg"
+                            }))),
+                    React__default.createElement(Menu$2, {
+                        sx: {mt: '45px'}, id: "menu-appbar", anchorEl: anchorElUser, anchorOrigin: {
                             vertical: 'top',
                             horizontal: 'right',
                         }, keepMounted: true, transformOrigin: {
@@ -18188,10 +18216,12 @@ function NavBar() {
 // import HomePage from "./components/HomePage";
 // import Report from "./components/Report";
 // import List from "./components/List";
+var ProjectContext = React__default.createContext(null);
 function Application(_a) {
-    _a.projectName;
+    var projectName = _a.projectName;
     return (React__default.createElement(React__default.Fragment, null,
-        React__default.createElement(NavBar, null)));
+        React__default.createElement(ProjectContext.Provider, {value: projectName},
+            React__default.createElement(NavBar, null))));
 }
 
 export { Application };
