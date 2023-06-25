@@ -1,18 +1,2224 @@
 import * as React from 'react';
-import React__default, {Children, cloneElement, forwardRef, isValidElement, useContext} from 'react';
+import React__default, {
+	Children,
+	cloneElement,
+	forwardRef,
+	isValidElement,
+	useContext,
+	useEffect,
+	useState
+} from 'react';
 import require$$2, {jsx, jsxs} from 'react/jsx-runtime';
 import * as ReactDOM from 'react-dom';
 import ReactDOM__default from 'react-dom';
 
+/**
+ * @remix-run/router v1.7.0
+ *
+ * Copyright (c) Remix Software Inc.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE.md file in the root directory of this source tree.
+ *
+ * @license MIT
+ */
+function _extends$3() {
+	_extends$3 = Object.assign ? Object.assign.bind() : function (target) {
+		for (var i = 1; i < arguments.length; i++) {
+			var source = arguments[i];
+			for (var key in source) {
+				if (Object.prototype.hasOwnProperty.call(source, key)) {
+					target[key] = source[key];
+				}
+			}
+		}
+		return target;
+	};
+	return _extends$3.apply(this, arguments);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//#region Types and Constants
+////////////////////////////////////////////////////////////////////////////////
+/**
+ * Actions represent the type of change to a location value.
+ */
+var Action;
+(function (Action) {
+	/**
+	 * A POP indicates a change to an arbitrary index in the history stack, such
+	 * as a back or forward navigation. It does not describe the direction of the
+	 * navigation, only that the current index changed.
+	 *
+	 * Note: This is the default action for newly created history objects.
+	 */
+	Action["Pop"] = "POP";
+	/**
+	 * A PUSH indicates a new entry being added to the history stack, such as when
+	 * a link is clicked and a new page loads. When this happens, all subsequent
+	 * entries in the stack are lost.
+	 */
+	Action["Push"] = "PUSH";
+	/**
+	 * A REPLACE indicates the entry at the current index in the history stack
+	 * being replaced by a new one.
+	 */
+	Action["Replace"] = "REPLACE";
+})(Action || (Action = {}));
+const PopStateEventType = "popstate";
+
+/**
+ * Browser history stores the location in regular URLs. This is the standard for
+ * most web apps, but it requires some configuration on the server to ensure you
+ * serve the same app at multiple URLs.
+ *
+ * @see https://github.com/remix-run/history/tree/main/docs/api-reference.md#createbrowserhistory
+ */
+function createBrowserHistory(options) {
+	if (options === void 0) {
+		options = {};
+	}
+
+	function createBrowserLocation(window, globalHistory) {
+		let {
+			pathname,
+			search,
+			hash
+		} = window.location;
+		return createLocation("", {
+				pathname,
+				search,
+				hash
+			},
+			// state defaults to `null` because `window.history.state` does
+			globalHistory.state && globalHistory.state.usr || null, globalHistory.state && globalHistory.state.key || "default");
+	}
+
+	function createBrowserHref(window, to) {
+		return typeof to === "string" ? to : createPath(to);
+	}
+
+	return getUrlBasedHistory(createBrowserLocation, createBrowserHref, null, options);
+}
+
+function invariant(value, message) {
+	if (value === false || value === null || typeof value === "undefined") {
+		throw new Error(message);
+	}
+}
+
+function warning(cond, message) {
+	if (!cond) {
+		// eslint-disable-next-line no-console
+		if (typeof console !== "undefined") console.warn(message);
+		try {
+			// Welcome to debugging history!
+			//
+			// This error is thrown as a convenience so you can more easily
+			// find the source for a warning that appears in the console by
+			// enabling "pause on exceptions" in your JavaScript debugger.
+			throw new Error(message);
+			// eslint-disable-next-line no-empty
+		} catch (e) {
+		}
+	}
+}
+
+function createKey() {
+	return Math.random().toString(36).substr(2, 8);
+}
+
+/**
+ * For browser-based histories, we combine the state and key into an object
+ */
+function getHistoryState(location, index) {
+	return {
+		usr: location.state,
+		key: location.key,
+		idx: index
+	};
+}
+
+/**
+ * Creates a Location object with a unique key from the given Path
+ */
+function createLocation(current, to, state, key) {
+	if (state === void 0) {
+		state = null;
+	}
+	let location = _extends$3({
+		pathname: typeof current === "string" ? current : current.pathname,
+		search: "",
+		hash: ""
+	}, typeof to === "string" ? parsePath(to) : to, {
+		state,
+		// TODO: This could be cleaned up.  push/replace should probably just take
+		// full Locations now and avoid the need to run through this flow at all
+		// But that's a pretty big refactor to the current test suite so going to
+		// keep as is for the time being and just let any incoming keys take precedence
+		key: to && to.key || key || createKey()
+	});
+	return location;
+}
+
+/**
+ * Creates a string URL path from the given pathname, search, and hash components.
+ */
+function createPath(_ref) {
+	let {
+		pathname = "/",
+		search = "",
+		hash = ""
+	} = _ref;
+	if (search && search !== "?") pathname += search.charAt(0) === "?" ? search : "?" + search;
+	if (hash && hash !== "#") pathname += hash.charAt(0) === "#" ? hash : "#" + hash;
+	return pathname;
+}
+
+/**
+ * Parses a string URL path into its separate pathname, search, and hash components.
+ */
+function parsePath(path) {
+	let parsedPath = {};
+	if (path) {
+		let hashIndex = path.indexOf("#");
+		if (hashIndex >= 0) {
+			parsedPath.hash = path.substr(hashIndex);
+			path = path.substr(0, hashIndex);
+		}
+		let searchIndex = path.indexOf("?");
+		if (searchIndex >= 0) {
+			parsedPath.search = path.substr(searchIndex);
+			path = path.substr(0, searchIndex);
+		}
+		if (path) {
+			parsedPath.pathname = path;
+		}
+	}
+	return parsedPath;
+}
+
+function getUrlBasedHistory(getLocation, createHref, validateLocation, options) {
+	if (options === void 0) {
+		options = {};
+	}
+	let {
+		window = document.defaultView,
+		v5Compat = false
+	} = options;
+	let globalHistory = window.history;
+	let action = Action.Pop;
+	let listener = null;
+	let index = getIndex();
+	// Index should only be null when we initialize. If not, it's because the
+	// user called history.pushState or history.replaceState directly, in which
+	// case we should log a warning as it will result in bugs.
+	if (index == null) {
+		index = 0;
+		globalHistory.replaceState(_extends$3({}, globalHistory.state, {
+			idx: index
+		}), "");
+	}
+
+	function getIndex() {
+		let state = globalHistory.state || {
+			idx: null
+		};
+		return state.idx;
+	}
+
+	function handlePop() {
+		action = Action.Pop;
+		let nextIndex = getIndex();
+		let delta = nextIndex == null ? null : nextIndex - index;
+		index = nextIndex;
+		if (listener) {
+			listener({
+				action,
+				location: history.location,
+				delta
+			});
+		}
+	}
+
+	function push(to, state) {
+		action = Action.Push;
+		let location = createLocation(history.location, to, state);
+		if (validateLocation) validateLocation(location, to);
+		index = getIndex() + 1;
+		let historyState = getHistoryState(location, index);
+		let url = history.createHref(location);
+		// try...catch because iOS limits us to 100 pushState calls :/
+		try {
+			globalHistory.pushState(historyState, "", url);
+		} catch (error) {
+			// If the exception is because `state` can't be serialized, let that throw
+			// outwards just like a replace call would so the dev knows the cause
+			// https://html.spec.whatwg.org/multipage/nav-history-apis.html#shared-history-push/replace-state-steps
+			// https://html.spec.whatwg.org/multipage/structured-data.html#structuredserializeinternal
+			if (error instanceof DOMException && error.name === "DataCloneError") {
+				throw error;
+			}
+			// They are going to lose state here, but there is no real
+			// way to warn them about it since the page will refresh...
+			window.location.assign(url);
+		}
+		if (v5Compat && listener) {
+			listener({
+				action,
+				location: history.location,
+				delta: 1
+			});
+		}
+	}
+
+	function replace(to, state) {
+		action = Action.Replace;
+		let location = createLocation(history.location, to, state);
+		if (validateLocation) validateLocation(location, to);
+		index = getIndex();
+		let historyState = getHistoryState(location, index);
+		let url = history.createHref(location);
+		globalHistory.replaceState(historyState, "", url);
+		if (v5Compat && listener) {
+			listener({
+				action,
+				location: history.location,
+				delta: 0
+			});
+		}
+	}
+
+	function createURL(to) {
+		// window.location.origin is "null" (the literal string value) in Firefox
+		// under certain conditions, notably when serving from a local HTML file
+		// See https://bugzilla.mozilla.org/show_bug.cgi?id=878297
+		let base = window.location.origin !== "null" ? window.location.origin : window.location.href;
+		let href = typeof to === "string" ? to : createPath(to);
+		invariant(base, "No window.location.(origin|href) available to create URL for href: " + href);
+		return new URL(href, base);
+	}
+
+	let history = {
+		get action() {
+			return action;
+		},
+		get location() {
+			return getLocation(window, globalHistory);
+		},
+		listen(fn) {
+			if (listener) {
+				throw new Error("A history only accepts one active listener");
+			}
+			window.addEventListener(PopStateEventType, handlePop);
+			listener = fn;
+			return () => {
+				window.removeEventListener(PopStateEventType, handlePop);
+				listener = null;
+			};
+		},
+		createHref(to) {
+			return createHref(window, to);
+		},
+		createURL,
+		encodeLocation(to) {
+			// Encode a Location the same way window.location would
+			let url = createURL(to);
+			return {
+				pathname: url.pathname,
+				search: url.search,
+				hash: url.hash
+			};
+		},
+		push,
+		replace,
+		go(n) {
+			return globalHistory.go(n);
+		}
+	};
+	return history;
+}
+
+//#endregion
+
+var ResultType;
+(function (ResultType) {
+	ResultType["data"] = "data";
+	ResultType["deferred"] = "deferred";
+	ResultType["redirect"] = "redirect";
+	ResultType["error"] = "error";
+})(ResultType || (ResultType = {}));
+
+/**
+ * Matches the given routes to a location and returns the match data.
+ *
+ * @see https://reactrouter.com/utils/match-routes
+ */
+function matchRoutes(routes, locationArg, basename) {
+	if (basename === void 0) {
+		basename = "/";
+	}
+	let location = typeof locationArg === "string" ? parsePath(locationArg) : locationArg;
+	let pathname = stripBasename(location.pathname || "/", basename);
+	if (pathname == null) {
+		return null;
+	}
+	let branches = flattenRoutes(routes);
+	rankRouteBranches(branches);
+	let matches = null;
+	for (let i = 0; matches == null && i < branches.length; ++i) {
+		matches = matchRouteBranch(branches[i],
+			// Incoming pathnames are generally encoded from either window.location
+			// or from router.navigate, but we want to match against the unencoded
+			// paths in the route definitions.  Memory router locations won't be
+			// encoded here but there also shouldn't be anything to decode so this
+			// should be a safe operation.  This avoids needing matchRoutes to be
+			// history-aware.
+			safelyDecodeURI(pathname));
+	}
+	return matches;
+}
+
+function flattenRoutes(routes, branches, parentsMeta, parentPath) {
+	if (branches === void 0) {
+		branches = [];
+	}
+	if (parentsMeta === void 0) {
+		parentsMeta = [];
+	}
+	if (parentPath === void 0) {
+		parentPath = "";
+	}
+	let flattenRoute = (route, index, relativePath) => {
+		let meta = {
+			relativePath: relativePath === undefined ? route.path || "" : relativePath,
+			caseSensitive: route.caseSensitive === true,
+			childrenIndex: index,
+			route
+		};
+		if (meta.relativePath.startsWith("/")) {
+			invariant(meta.relativePath.startsWith(parentPath), "Absolute route path \"" + meta.relativePath + "\" nested under path " + ("\"" + parentPath + "\" is not valid. An absolute child route path ") + "must start with the combined path of all its parent routes.");
+			meta.relativePath = meta.relativePath.slice(parentPath.length);
+		}
+		let path = joinPaths([parentPath, meta.relativePath]);
+		let routesMeta = parentsMeta.concat(meta);
+		// Add the children before adding this route to the array so we traverse the
+		// route tree depth-first and child routes appear before their parents in
+		// the "flattened" version.
+		if (route.children && route.children.length > 0) {
+			invariant(
+				// Our types know better, but runtime JS may not!
+				// @ts-expect-error
+				route.index !== true, "Index routes must not have child routes. Please remove " + ("all child routes from route path \"" + path + "\"."));
+			flattenRoutes(route.children, branches, routesMeta, path);
+		}
+		// Routes without a path shouldn't ever match by themselves unless they are
+		// index routes, so don't add them to the list of possible branches.
+		if (route.path == null && !route.index) {
+			return;
+		}
+		branches.push({
+			path,
+			score: computeScore(path, route.index),
+			routesMeta
+		});
+	};
+	routes.forEach((route, index) => {
+		var _route$path;
+		// coarse-grain check for optional params
+		if (route.path === "" || !((_route$path = route.path) != null && _route$path.includes("?"))) {
+			flattenRoute(route, index);
+		} else {
+			for (let exploded of explodeOptionalSegments(route.path)) {
+				flattenRoute(route, index, exploded);
+			}
+		}
+	});
+	return branches;
+}
+
+/**
+ * Computes all combinations of optional path segments for a given path,
+ * excluding combinations that are ambiguous and of lower priority.
+ *
+ * For example, `/one/:two?/three/:four?/:five?` explodes to:
+ * - `/one/three`
+ * - `/one/:two/three`
+ * - `/one/three/:four`
+ * - `/one/three/:five`
+ * - `/one/:two/three/:four`
+ * - `/one/:two/three/:five`
+ * - `/one/three/:four/:five`
+ * - `/one/:two/three/:four/:five`
+ */
+function explodeOptionalSegments(path) {
+	let segments = path.split("/");
+	if (segments.length === 0) return [];
+	let [first, ...rest] = segments;
+	// Optional path segments are denoted by a trailing `?`
+	let isOptional = first.endsWith("?");
+	// Compute the corresponding required segment: `foo?` -> `foo`
+	let required = first.replace(/\?$/, "");
+	if (rest.length === 0) {
+		// Intepret empty string as omitting an optional segment
+		// `["one", "", "three"]` corresponds to omitting `:two` from `/one/:two?/three` -> `/one/three`
+		return isOptional ? [required, ""] : [required];
+	}
+	let restExploded = explodeOptionalSegments(rest.join("/"));
+	let result = [];
+	// All child paths with the prefix.  Do this for all children before the
+	// optional version for all children so we get consistent ordering where the
+	// parent optional aspect is preferred as required.  Otherwise, we can get
+	// child sections interspersed where deeper optional segments are higher than
+	// parent optional segments, where for example, /:two would explodes _earlier_
+	// then /:one.  By always including the parent as required _for all children_
+	// first, we avoid this issue
+	result.push(...restExploded.map(subpath => subpath === "" ? required : [required, subpath].join("/")));
+	// Then if this is an optional value, add all child versions without
+	if (isOptional) {
+		result.push(...restExploded);
+	}
+	// for absolute paths, ensure `/` instead of empty segment
+	return result.map(exploded => path.startsWith("/") && exploded === "" ? "/" : exploded);
+}
+
+function rankRouteBranches(branches) {
+	branches.sort((a, b) => a.score !== b.score ? b.score - a.score // Higher score first
+		: compareIndexes(a.routesMeta.map(meta => meta.childrenIndex), b.routesMeta.map(meta => meta.childrenIndex)));
+}
+
+const paramRe = /^:\w+$/;
+const dynamicSegmentValue = 3;
+const indexRouteValue = 2;
+const emptySegmentValue = 1;
+const staticSegmentValue = 10;
+const splatPenalty = -2;
+const isSplat = s => s === "*";
+
+function computeScore(path, index) {
+	let segments = path.split("/");
+	let initialScore = segments.length;
+	if (segments.some(isSplat)) {
+		initialScore += splatPenalty;
+	}
+	if (index) {
+		initialScore += indexRouteValue;
+	}
+	return segments.filter(s => !isSplat(s)).reduce((score, segment) => score + (paramRe.test(segment) ? dynamicSegmentValue : segment === "" ? emptySegmentValue : staticSegmentValue), initialScore);
+}
+
+function compareIndexes(a, b) {
+	let siblings = a.length === b.length && a.slice(0, -1).every((n, i) => n === b[i]);
+	return siblings ?
+		// If two routes are siblings, we should try to match the earlier sibling
+		// first. This allows people to have fine-grained control over the matching
+		// behavior by simply putting routes with identical paths in the order they
+		// want them tried.
+		a[a.length - 1] - b[b.length - 1] :
+		// Otherwise, it doesn't really make sense to rank non-siblings by index,
+		// so they sort equally.
+		0;
+}
+
+function matchRouteBranch(branch, pathname) {
+	let {
+		routesMeta
+	} = branch;
+	let matchedParams = {};
+	let matchedPathname = "/";
+	let matches = [];
+	for (let i = 0; i < routesMeta.length; ++i) {
+		let meta = routesMeta[i];
+		let end = i === routesMeta.length - 1;
+		let remainingPathname = matchedPathname === "/" ? pathname : pathname.slice(matchedPathname.length) || "/";
+		let match = matchPath({
+			path: meta.relativePath,
+			caseSensitive: meta.caseSensitive,
+			end
+		}, remainingPathname);
+		if (!match) return null;
+		Object.assign(matchedParams, match.params);
+		let route = meta.route;
+		matches.push({
+			// TODO: Can this as be avoided?
+			params: matchedParams,
+			pathname: joinPaths([matchedPathname, match.pathname]),
+			pathnameBase: normalizePathname(joinPaths([matchedPathname, match.pathnameBase])),
+			route
+		});
+		if (match.pathnameBase !== "/") {
+			matchedPathname = joinPaths([matchedPathname, match.pathnameBase]);
+		}
+	}
+	return matches;
+}
+
+/**
+ * Performs pattern matching on a URL pathname and returns information about
+ * the match.
+ *
+ * @see https://reactrouter.com/utils/match-path
+ */
+function matchPath(pattern, pathname) {
+	if (typeof pattern === "string") {
+		pattern = {
+			path: pattern,
+			caseSensitive: false,
+			end: true
+		};
+	}
+	let [matcher, paramNames] = compilePath(pattern.path, pattern.caseSensitive, pattern.end);
+	let match = pathname.match(matcher);
+	if (!match) return null;
+	let matchedPathname = match[0];
+	let pathnameBase = matchedPathname.replace(/(.)\/+$/, "$1");
+	let captureGroups = match.slice(1);
+	let params = paramNames.reduce((memo, paramName, index) => {
+		// We need to compute the pathnameBase here using the raw splat value
+		// instead of using params["*"] later because it will be decoded then
+		if (paramName === "*") {
+			let splatValue = captureGroups[index] || "";
+			pathnameBase = matchedPathname.slice(0, matchedPathname.length - splatValue.length).replace(/(.)\/+$/, "$1");
+		}
+		memo[paramName] = safelyDecodeURIComponent(captureGroups[index] || "", paramName);
+		return memo;
+	}, {});
+	return {
+		params,
+		pathname: matchedPathname,
+		pathnameBase,
+		pattern
+	};
+}
+
+function compilePath(path, caseSensitive, end) {
+	if (caseSensitive === void 0) {
+		caseSensitive = false;
+	}
+	if (end === void 0) {
+		end = true;
+	}
+	warning(path === "*" || !path.endsWith("*") || path.endsWith("/*"), "Route path \"" + path + "\" will be treated as if it were " + ("\"" + path.replace(/\*$/, "/*") + "\" because the `*` character must ") + "always follow a `/` in the pattern. To get rid of this warning, " + ("please change the route path to \"" + path.replace(/\*$/, "/*") + "\"."));
+	let paramNames = [];
+	let regexpSource = "^" + path.replace(/\/*\*?$/, "") // Ignore trailing / and /*, we'll handle it below
+		.replace(/^\/*/, "/") // Make sure it has a leading /
+		.replace(/[\\.*+^$?{}|()[\]]/g, "\\$&") // Escape special regex chars
+		.replace(/\/:(\w+)/g, (_, paramName) => {
+			paramNames.push(paramName);
+			return "/([^\\/]+)";
+		});
+	if (path.endsWith("*")) {
+		paramNames.push("*");
+		regexpSource += path === "*" || path === "/*" ? "(.*)$" // Already matched the initial /, just match the rest
+			: "(?:\\/(.+)|\\/*)$"; // Don't include the / in params["*"]
+	} else if (end) {
+		// When matching to the end, ignore trailing slashes
+		regexpSource += "\\/*$";
+	} else if (path !== "" && path !== "/") {
+		// If our path is non-empty and contains anything beyond an initial slash,
+		// then we have _some_ form of path in our regex so we should expect to
+		// match only if we find the end of this path segment.  Look for an optional
+		// non-captured trailing slash (to match a portion of the URL) or the end
+		// of the path (if we've matched to the end).  We used to do this with a
+		// word boundary but that gives false positives on routes like
+		// /user-preferences since `-` counts as a word boundary.
+		regexpSource += "(?:(?=\\/|$))";
+	} else ;
+	let matcher = new RegExp(regexpSource, caseSensitive ? undefined : "i");
+	return [matcher, paramNames];
+}
+
+function safelyDecodeURI(value) {
+	try {
+		return decodeURI(value);
+	} catch (error) {
+		warning(false, "The URL path \"" + value + "\" could not be decoded because it is is a " + "malformed URL segment. This is probably due to a bad percent " + ("encoding (" + error + ")."));
+		return value;
+	}
+}
+
+function safelyDecodeURIComponent(value, paramName) {
+	try {
+		return decodeURIComponent(value);
+	} catch (error) {
+		warning(false, "The value for the URL param \"" + paramName + "\" will not be decoded because" + (" the string \"" + value + "\" is a malformed URL segment. This is probably") + (" due to a bad percent encoding (" + error + ")."));
+		return value;
+	}
+}
+
+/**
+ * @private
+ */
+function stripBasename(pathname, basename) {
+	if (basename === "/") return pathname;
+	if (!pathname.toLowerCase().startsWith(basename.toLowerCase())) {
+		return null;
+	}
+	// We want to leave trailing slash behavior in the user's control, so if they
+	// specify a basename with a trailing slash, we should support it
+	let startIndex = basename.endsWith("/") ? basename.length - 1 : basename.length;
+	let nextChar = pathname.charAt(startIndex);
+	if (nextChar && nextChar !== "/") {
+		// pathname does not start with basename/
+		return null;
+	}
+	return pathname.slice(startIndex) || "/";
+}
+
+/**
+ * Returns a resolved path object relative to the given pathname.
+ *
+ * @see https://reactrouter.com/utils/resolve-path
+ */
+function resolvePath(to, fromPathname) {
+	if (fromPathname === void 0) {
+		fromPathname = "/";
+	}
+	let {
+		pathname: toPathname,
+		search = "",
+		hash = ""
+	} = typeof to === "string" ? parsePath(to) : to;
+	let pathname = toPathname ? toPathname.startsWith("/") ? toPathname : resolvePathname(toPathname, fromPathname) : fromPathname;
+	return {
+		pathname,
+		search: normalizeSearch(search),
+		hash: normalizeHash(hash)
+	};
+}
+
+function resolvePathname(relativePath, fromPathname) {
+	let segments = fromPathname.replace(/\/+$/, "").split("/");
+	let relativeSegments = relativePath.split("/");
+	relativeSegments.forEach(segment => {
+		if (segment === "..") {
+			// Keep the root "" segment so the pathname starts at /
+			if (segments.length > 1) segments.pop();
+		} else if (segment !== ".") {
+			segments.push(segment);
+		}
+	});
+	return segments.length > 1 ? segments.join("/") : "/";
+}
+
+function getInvalidPathError(char, field, dest, path) {
+	return "Cannot include a '" + char + "' character in a manually specified " + ("`to." + field + "` field [" + JSON.stringify(path) + "].  Please separate it out to the ") + ("`to." + dest + "` field. Alternatively you may provide the full path as ") + "a string in <Link to=\"...\"> and the router will parse it for you.";
+}
+
+/**
+ * @private
+ *
+ * When processing relative navigation we want to ignore ancestor routes that
+ * do not contribute to the path, such that index/pathless layout routes don't
+ * interfere.
+ *
+ * For example, when moving a route element into an index route and/or a
+ * pathless layout route, relative link behavior contained within should stay
+ * the same.  Both of the following examples should link back to the root:
+ *
+ *   <Route path="/">
+ *     <Route path="accounts" element={<Link to=".."}>
+ *   </Route>
+ *
+ *   <Route path="/">
+ *     <Route path="accounts">
+ *       <Route element={<AccountsLayout />}>       // <-- Does not contribute
+ *         <Route index element={<Link to=".."} />  // <-- Does not contribute
+ *       </Route
+ *     </Route>
+ *   </Route>
+ */
+function getPathContributingMatches(matches) {
+	return matches.filter((match, index) => index === 0 || match.route.path && match.route.path.length > 0);
+}
+
+/**
+ * @private
+ */
+function resolveTo(toArg, routePathnames, locationPathname, isPathRelative) {
+	if (isPathRelative === void 0) {
+		isPathRelative = false;
+	}
+	let to;
+	if (typeof toArg === "string") {
+		to = parsePath(toArg);
+	} else {
+		to = _extends$3({}, toArg);
+		invariant(!to.pathname || !to.pathname.includes("?"), getInvalidPathError("?", "pathname", "search", to));
+		invariant(!to.pathname || !to.pathname.includes("#"), getInvalidPathError("#", "pathname", "hash", to));
+		invariant(!to.search || !to.search.includes("#"), getInvalidPathError("#", "search", "hash", to));
+	}
+	let isEmptyPath = toArg === "" || to.pathname === "";
+	let toPathname = isEmptyPath ? "/" : to.pathname;
+	let from;
+	// Routing is relative to the current pathname if explicitly requested.
+	//
+	// If a pathname is explicitly provided in `to`, it should be relative to the
+	// route context. This is explained in `Note on `<Link to>` values` in our
+	// migration guide from v5 as a means of disambiguation between `to` values
+	// that begin with `/` and those that do not. However, this is problematic for
+	// `to` values that do not provide a pathname. `to` can simply be a search or
+	// hash string, in which case we should assume that the navigation is relative
+	// to the current location's pathname and *not* the route pathname.
+	if (isPathRelative || toPathname == null) {
+		from = locationPathname;
+	} else {
+		let routePathnameIndex = routePathnames.length - 1;
+		if (toPathname.startsWith("..")) {
+			let toSegments = toPathname.split("/");
+			// Each leading .. segment means "go up one route" instead of "go up one
+			// URL segment".  This is a key difference from how <a href> works and a
+			// major reason we call this a "to" value instead of a "href".
+			while (toSegments[0] === "..") {
+				toSegments.shift();
+				routePathnameIndex -= 1;
+			}
+			to.pathname = toSegments.join("/");
+		}
+		// If there are more ".." segments than parent routes, resolve relative to
+		// the root / URL.
+		from = routePathnameIndex >= 0 ? routePathnames[routePathnameIndex] : "/";
+	}
+	let path = resolvePath(to, from);
+	// Ensure the pathname has a trailing slash if the original "to" had one
+	let hasExplicitTrailingSlash = toPathname && toPathname !== "/" && toPathname.endsWith("/");
+	// Or if this was a link to the current path which has a trailing slash
+	let hasCurrentTrailingSlash = (isEmptyPath || toPathname === ".") && locationPathname.endsWith("/");
+	if (!path.pathname.endsWith("/") && (hasExplicitTrailingSlash || hasCurrentTrailingSlash)) {
+		path.pathname += "/";
+	}
+	return path;
+}
+
+/**
+ * @private
+ */
+const joinPaths = paths => paths.join("/").replace(/\/\/+/g, "/");
+/**
+ * @private
+ */
+const normalizePathname = pathname => pathname.replace(/\/+$/, "").replace(/^\/*/, "/");
+/**
+ * @private
+ */
+const normalizeSearch = search => !search || search === "?" ? "" : search.startsWith("?") ? search : "?" + search;
+/**
+ * @private
+ */
+const normalizeHash = hash => !hash || hash === "#" ? "" : hash.startsWith("#") ? hash : "#" + hash;
+
+/**
+ * Check if the given error is an ErrorResponse generated from a 4xx/5xx
+ * Response thrown from an action/loader
+ */
+function isRouteErrorResponse(error) {
+	return error != null && typeof error.status === "number" && typeof error.statusText === "string" && typeof error.internal === "boolean" && "data" in error;
+}
+
+const validMutationMethodsArr = ["post", "put", "patch", "delete"];
+new Set(validMutationMethodsArr);
+const validRequestMethodsArr = ["get", ...validMutationMethodsArr];
+new Set(validRequestMethodsArr);
+
+/**
+ * React Router v6.14.0
+ *
+ * Copyright (c) Remix Software Inc.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE.md file in the root directory of this source tree.
+ *
+ * @license MIT
+ */
+
+function _extends$2() {
+	_extends$2 = Object.assign ? Object.assign.bind() : function (target) {
+		for (var i = 1; i < arguments.length; i++) {
+			var source = arguments[i];
+			for (var key in source) {
+				if (Object.prototype.hasOwnProperty.call(source, key)) {
+					target[key] = source[key];
+				}
+			}
+		}
+		return target;
+	};
+	return _extends$2.apply(this, arguments);
+}
+
+// Create react-specific types from the agnostic types in @remix-run/router to
+// export from react-router
+const DataRouterContext = /*#__PURE__*/React.createContext(null);
+if (process.env.NODE_ENV !== "production") {
+	DataRouterContext.displayName = "DataRouter";
+}
+const DataRouterStateContext = /*#__PURE__*/React.createContext(null);
+if (process.env.NODE_ENV !== "production") {
+	DataRouterStateContext.displayName = "DataRouterState";
+}
+const AwaitContext = /*#__PURE__*/React.createContext(null);
+if (process.env.NODE_ENV !== "production") {
+	AwaitContext.displayName = "Await";
+}
+
+/**
+ * A Navigator is a "location changer"; it's how you get to different locations.
+ *
+ * Every history instance conforms to the Navigator interface, but the
+ * distinction is useful primarily when it comes to the low-level <Router> API
+ * where both the location and a navigator must be provided separately in order
+ * to avoid "tearing" that may occur in a suspense-enabled app if the action
+ * and/or location were to be read directly from the history instance.
+ */
+
+const NavigationContext = /*#__PURE__*/React.createContext(null);
+if (process.env.NODE_ENV !== "production") {
+	NavigationContext.displayName = "Navigation";
+}
+const LocationContext = /*#__PURE__*/React.createContext(null);
+if (process.env.NODE_ENV !== "production") {
+	LocationContext.displayName = "Location";
+}
+const RouteContext = /*#__PURE__*/React.createContext({
+	outlet: null,
+	matches: [],
+	isDataRoute: false
+});
+if (process.env.NODE_ENV !== "production") {
+	RouteContext.displayName = "Route";
+}
+const RouteErrorContext = /*#__PURE__*/React.createContext(null);
+if (process.env.NODE_ENV !== "production") {
+	RouteErrorContext.displayName = "RouteError";
+}
+
+/**
+ * Returns the full href for the given "to" value. This is useful for building
+ * custom links that are also accessible and preserve right-click behavior.
+ *
+ * @see https://reactrouter.com/hooks/use-href
+ */
+function useHref(to, _temp) {
+	let {
+		relative
+	} = _temp === void 0 ? {} : _temp;
+	!useInRouterContext() ? process.env.NODE_ENV !== "production" ? invariant(false, // TODO: This error is probably because they somehow have 2 versions of the
+		// router loaded. We can help them understand how to avoid that.
+		"useHref() may be used only in the context of a <Router> component.") : invariant(false) : void 0;
+	let {
+		basename,
+		navigator
+	} = React.useContext(NavigationContext);
+	let {
+		hash,
+		pathname,
+		search
+	} = useResolvedPath(to, {
+		relative
+	});
+	let joinedPathname = pathname;
+
+	// If we're operating within a basename, prepend it to the pathname prior
+	// to creating the href.  If this is a root navigation, then just use the raw
+	// basename which allows the basename to have full control over the presence
+	// of a trailing slash on root links
+	if (basename !== "/") {
+		joinedPathname = pathname === "/" ? basename : joinPaths([basename, pathname]);
+	}
+	return navigator.createHref({
+		pathname: joinedPathname,
+		search,
+		hash
+	});
+}
+
+/**
+ * Returns true if this component is a descendant of a <Router>.
+ *
+ * @see https://reactrouter.com/hooks/use-in-router-context
+ */
+function useInRouterContext() {
+	return React.useContext(LocationContext) != null;
+}
+
+/**
+ * Returns the current location object, which represents the current URL in web
+ * browsers.
+ *
+ * Note: If you're using this it may mean you're doing some of your own
+ * "routing" in your app, and we'd like to know what your use case is. We may
+ * be able to provide something higher-level to better suit your needs.
+ *
+ * @see https://reactrouter.com/hooks/use-location
+ */
+function useLocation() {
+	!useInRouterContext() ? process.env.NODE_ENV !== "production" ? invariant(false, // TODO: This error is probably because they somehow have 2 versions of the
+		// router loaded. We can help them understand how to avoid that.
+		"useLocation() may be used only in the context of a <Router> component.") : invariant(false) : void 0;
+	return React.useContext(LocationContext).location;
+}
+
+/**
+ * The interface for the navigate() function returned from useNavigate().
+ */
+
+const navigateEffectWarning = "You should call navigate() in a React.useEffect(), not when " + "your component is first rendered.";
+
+// Mute warnings for calls to useNavigate in SSR environments
+function useIsomorphicLayoutEffect(cb) {
+	let isStatic = React.useContext(NavigationContext).static;
+	if (!isStatic) {
+		// We should be able to get rid of this once react 18.3 is released
+		// See: https://github.com/facebook/react/pull/26395
+		// eslint-disable-next-line react-hooks/rules-of-hooks
+		React.useLayoutEffect(cb);
+	}
+}
+
+/**
+ * Returns an imperative method for changing the location. Used by <Link>s, but
+ * may also be used by other elements to change the location.
+ *
+ * @see https://reactrouter.com/hooks/use-navigate
+ */
+function useNavigate() {
+	let {
+		isDataRoute
+	} = React.useContext(RouteContext);
+	// Conditional usage is OK here because the usage of a data router is static
+	// eslint-disable-next-line react-hooks/rules-of-hooks
+	return isDataRoute ? useNavigateStable() : useNavigateUnstable();
+}
+
+function useNavigateUnstable() {
+	!useInRouterContext() ? process.env.NODE_ENV !== "production" ? invariant(false, // TODO: This error is probably because they somehow have 2 versions of the
+		// router loaded. We can help them understand how to avoid that.
+		"useNavigate() may be used only in the context of a <Router> component.") : invariant(false) : void 0;
+	let dataRouterContext = React.useContext(DataRouterContext);
+	let {
+		basename,
+		navigator
+	} = React.useContext(NavigationContext);
+	let {
+		matches
+	} = React.useContext(RouteContext);
+	let {
+		pathname: locationPathname
+	} = useLocation();
+	let routePathnamesJson = JSON.stringify(getPathContributingMatches(matches).map(match => match.pathnameBase));
+	let activeRef = React.useRef(false);
+	useIsomorphicLayoutEffect(() => {
+		activeRef.current = true;
+	});
+	let navigate = React.useCallback(function (to, options) {
+		if (options === void 0) {
+			options = {};
+		}
+		process.env.NODE_ENV !== "production" ? warning(activeRef.current, navigateEffectWarning) : void 0;
+
+		// Short circuit here since if this happens on first render the navigate
+		// is useless because we haven't wired up our history listener yet
+		if (!activeRef.current) return;
+		if (typeof to === "number") {
+			navigator.go(to);
+			return;
+		}
+		let path = resolveTo(to, JSON.parse(routePathnamesJson), locationPathname, options.relative === "path");
+
+		// If we're operating within a basename, prepend it to the pathname prior
+		// to handing off to history (but only if we're not in a data router,
+		// otherwise it'll prepend the basename inside of the router).
+		// If this is a root navigation, then we navigate to the raw basename
+		// which allows the basename to have full control over the presence of a
+		// trailing slash on root links
+		if (dataRouterContext == null && basename !== "/") {
+			path.pathname = path.pathname === "/" ? basename : joinPaths([basename, path.pathname]);
+		}
+		(!!options.replace ? navigator.replace : navigator.push)(path, options.state, options);
+	}, [basename, navigator, routePathnamesJson, locationPathname, dataRouterContext]);
+	return navigate;
+}
+
+/**
+ * Resolves the pathname of the given `to` value against the current location.
+ *
+ * @see https://reactrouter.com/hooks/use-resolved-path
+ */
+function useResolvedPath(to, _temp2) {
+	let {
+		relative
+	} = _temp2 === void 0 ? {} : _temp2;
+	let {
+		matches
+	} = React.useContext(RouteContext);
+	let {
+		pathname: locationPathname
+	} = useLocation();
+	let routePathnamesJson = JSON.stringify(getPathContributingMatches(matches).map(match => match.pathnameBase));
+	return React.useMemo(() => resolveTo(to, JSON.parse(routePathnamesJson), locationPathname, relative === "path"), [to, routePathnamesJson, locationPathname, relative]);
+}
+
+/**
+ * Returns the element of the route that matched the current location, prepared
+ * with the correct context to render the remainder of the route tree. Route
+ * elements in the tree must render an <Outlet> to render their child route's
+ * element.
+ *
+ * @see https://reactrouter.com/hooks/use-routes
+ */
+function useRoutes(routes, locationArg) {
+	return useRoutesImpl(routes, locationArg);
+}
+
+// Internal implementation with accept optional param for RouterProvider usage
+function useRoutesImpl(routes, locationArg, dataRouterState) {
+	!useInRouterContext() ? process.env.NODE_ENV !== "production" ? invariant(false, // TODO: This error is probably because they somehow have 2 versions of the
+		// router loaded. We can help them understand how to avoid that.
+		"useRoutes() may be used only in the context of a <Router> component.") : invariant(false) : void 0;
+	let {
+		navigator
+	} = React.useContext(NavigationContext);
+	let {
+		matches: parentMatches
+	} = React.useContext(RouteContext);
+	let routeMatch = parentMatches[parentMatches.length - 1];
+	let parentParams = routeMatch ? routeMatch.params : {};
+	let parentPathname = routeMatch ? routeMatch.pathname : "/";
+	let parentPathnameBase = routeMatch ? routeMatch.pathnameBase : "/";
+	let parentRoute = routeMatch && routeMatch.route;
+	if (process.env.NODE_ENV !== "production") {
+		// You won't get a warning about 2 different <Routes> under a <Route>
+		// without a trailing *, but this is a best-effort warning anyway since we
+		// cannot even give the warning unless they land at the parent route.
+		//
+		// Example:
+		//
+		// <Routes>
+		//   {/* This route path MUST end with /* because otherwise
+		//       it will never match /blog/post/123 */}
+		//   <Route path="blog" element={<Blog />} />
+		//   <Route path="blog/feed" element={<BlogFeed />} />
+		// </Routes>
+		//
+		// function Blog() {
+		//   return (
+		//     <Routes>
+		//       <Route path="post/:id" element={<Post />} />
+		//     </Routes>
+		//   );
+		// }
+		let parentPath = parentRoute && parentRoute.path || "";
+		warningOnce(parentPathname, !parentRoute || parentPath.endsWith("*"), "You rendered descendant <Routes> (or called `useRoutes()`) at " + ("\"" + parentPathname + "\" (under <Route path=\"" + parentPath + "\">) but the ") + "parent route path has no trailing \"*\". This means if you navigate " + "deeper, the parent won't match anymore and therefore the child " + "routes will never render.\n\n" + ("Please change the parent <Route path=\"" + parentPath + "\"> to <Route ") + ("path=\"" + (parentPath === "/" ? "*" : parentPath + "/*") + "\">."));
+	}
+	let locationFromContext = useLocation();
+	let location;
+	if (locationArg) {
+		var _parsedLocationArg$pa;
+		let parsedLocationArg = typeof locationArg === "string" ? parsePath(locationArg) : locationArg;
+		!(parentPathnameBase === "/" || ((_parsedLocationArg$pa = parsedLocationArg.pathname) == null ? void 0 : _parsedLocationArg$pa.startsWith(parentPathnameBase))) ? process.env.NODE_ENV !== "production" ? invariant(false, "When overriding the location using `<Routes location>` or `useRoutes(routes, location)`, " + "the location pathname must begin with the portion of the URL pathname that was " + ("matched by all parent routes. The current pathname base is \"" + parentPathnameBase + "\" ") + ("but pathname \"" + parsedLocationArg.pathname + "\" was given in the `location` prop.")) : invariant(false) : void 0;
+		location = parsedLocationArg;
+	} else {
+		location = locationFromContext;
+	}
+	let pathname = location.pathname || "/";
+	let remainingPathname = parentPathnameBase === "/" ? pathname : pathname.slice(parentPathnameBase.length) || "/";
+	let matches = matchRoutes(routes, {
+		pathname: remainingPathname
+	});
+	if (process.env.NODE_ENV !== "production") {
+		process.env.NODE_ENV !== "production" ? warning(parentRoute || matches != null, "No routes matched location \"" + location.pathname + location.search + location.hash + "\" ") : void 0;
+		process.env.NODE_ENV !== "production" ? warning(matches == null || matches[matches.length - 1].route.element !== undefined || matches[matches.length - 1].route.Component !== undefined, "Matched leaf route at location \"" + location.pathname + location.search + location.hash + "\" " + "does not have an element or Component. This means it will render an <Outlet /> with a " + "null value by default resulting in an \"empty\" page.") : void 0;
+	}
+	let renderedMatches = _renderMatches(matches && matches.map(match => Object.assign({}, match, {
+		params: Object.assign({}, parentParams, match.params),
+		pathname: joinPaths([parentPathnameBase,
+			// Re-encode pathnames that were decoded inside matchRoutes
+			navigator.encodeLocation ? navigator.encodeLocation(match.pathname).pathname : match.pathname]),
+		pathnameBase: match.pathnameBase === "/" ? parentPathnameBase : joinPaths([parentPathnameBase,
+			// Re-encode pathnames that were decoded inside matchRoutes
+			navigator.encodeLocation ? navigator.encodeLocation(match.pathnameBase).pathname : match.pathnameBase])
+	})), parentMatches, dataRouterState);
+
+	// When a user passes in a `locationArg`, the associated routes need to
+	// be wrapped in a new `LocationContext.Provider` in order for `useLocation`
+	// to use the scoped location instead of the global location.
+	if (locationArg && renderedMatches) {
+		return /*#__PURE__*/React.createElement(LocationContext.Provider, {
+			value: {
+				location: _extends$2({
+					pathname: "/",
+					search: "",
+					hash: "",
+					state: null,
+					key: "default"
+				}, location),
+				navigationType: Action.Pop
+			}
+		}, renderedMatches);
+	}
+	return renderedMatches;
+}
+
+function DefaultErrorComponent() {
+	let error = useRouteError();
+	let message = isRouteErrorResponse(error) ? error.status + " " + error.statusText : error instanceof Error ? error.message : JSON.stringify(error);
+	let stack = error instanceof Error ? error.stack : null;
+	let lightgrey = "rgba(200,200,200, 0.5)";
+	let preStyles = {
+		padding: "0.5rem",
+		backgroundColor: lightgrey
+	};
+	let codeStyles = {
+		padding: "2px 4px",
+		backgroundColor: lightgrey
+	};
+	let devInfo = null;
+	if (process.env.NODE_ENV !== "production") {
+		console.error("Error handled by React Router default ErrorBoundary:", error);
+		devInfo = /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\uD83D\uDCBF Hey developer \uD83D\uDC4B"), /*#__PURE__*/React.createElement("p", null, "You can provide a way better UX than this when your app throws errors by providing your own ", /*#__PURE__*/React.createElement("code", {
+			style: codeStyles
+		}, "ErrorBoundary"), " or", " ", /*#__PURE__*/React.createElement("code", {
+			style: codeStyles
+		}, "errorElement"), " prop on your route."));
+	}
+	return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h2", null, "Unexpected Application Error!"), /*#__PURE__*/React.createElement("h3", {
+		style: {
+			fontStyle: "italic"
+		}
+	}, message), stack ? /*#__PURE__*/React.createElement("pre", {
+		style: preStyles
+	}, stack) : null, devInfo);
+}
+
+const defaultErrorElement = /*#__PURE__*/React.createElement(DefaultErrorComponent, null);
+
+class RenderErrorBoundary extends React.Component {
+	constructor(props) {
+		super(props);
+		this.state = {
+			location: props.location,
+			revalidation: props.revalidation,
+			error: props.error
+		};
+	}
+
+	static getDerivedStateFromError(error) {
+		return {
+			error: error
+		};
+	}
+
+	static getDerivedStateFromProps(props, state) {
+		// When we get into an error state, the user will likely click "back" to the
+		// previous page that didn't have an error. Because this wraps the entire
+		// application, that will have no effect--the error page continues to display.
+		// This gives us a mechanism to recover from the error when the location changes.
+		//
+		// Whether we're in an error state or not, we update the location in state
+		// so that when we are in an error state, it gets reset when a new location
+		// comes in and the user recovers from the error.
+		if (state.location !== props.location || state.revalidation !== "idle" && props.revalidation === "idle") {
+			return {
+				error: props.error,
+				location: props.location,
+				revalidation: props.revalidation
+			};
+		}
+
+		// If we're not changing locations, preserve the location but still surface
+		// any new errors that may come through. We retain the existing error, we do
+		// this because the error provided from the app state may be cleared without
+		// the location changing.
+		return {
+			error: props.error || state.error,
+			location: state.location,
+			revalidation: props.revalidation || state.revalidation
+		};
+	}
+
+	componentDidCatch(error, errorInfo) {
+		console.error("React Router caught the following error during render", error, errorInfo);
+	}
+
+	render() {
+		return this.state.error ? /*#__PURE__*/React.createElement(RouteContext.Provider, {
+			value: this.props.routeContext
+		}, /*#__PURE__*/React.createElement(RouteErrorContext.Provider, {
+			value: this.state.error,
+			children: this.props.component
+		})) : this.props.children;
+	}
+}
+
+function RenderedRoute(_ref) {
+	let {
+		routeContext,
+		match,
+		children
+	} = _ref;
+	let dataRouterContext = React.useContext(DataRouterContext);
+
+	// Track how deep we got in our render pass to emulate SSR componentDidCatch
+	// in a DataStaticRouter
+	if (dataRouterContext && dataRouterContext.static && dataRouterContext.staticContext && (match.route.errorElement || match.route.ErrorBoundary)) {
+		dataRouterContext.staticContext._deepestRenderedBoundaryId = match.route.id;
+	}
+	return /*#__PURE__*/React.createElement(RouteContext.Provider, {
+		value: routeContext
+	}, children);
+}
+
+function _renderMatches(matches, parentMatches, dataRouterState) {
+	var _dataRouterState2;
+	if (parentMatches === void 0) {
+		parentMatches = [];
+	}
+	if (dataRouterState === void 0) {
+		dataRouterState = null;
+	}
+	if (matches == null) {
+		var _dataRouterState;
+		if ((_dataRouterState = dataRouterState) != null && _dataRouterState.errors) {
+			// Don't bail if we have data router errors so we can render them in the
+			// boundary.  Use the pre-matched (or shimmed) matches
+			matches = dataRouterState.matches;
+		} else {
+			return null;
+		}
+	}
+	let renderedMatches = matches;
+
+	// If we have data errors, trim matches to the highest error boundary
+	let errors = (_dataRouterState2 = dataRouterState) == null ? void 0 : _dataRouterState2.errors;
+	if (errors != null) {
+		let errorIndex = renderedMatches.findIndex(m => m.route.id && (errors == null ? void 0 : errors[m.route.id]));
+		!(errorIndex >= 0) ? process.env.NODE_ENV !== "production" ? invariant(false, "Could not find a matching route for errors on route IDs: " + Object.keys(errors).join(",")) : invariant(false) : void 0;
+		renderedMatches = renderedMatches.slice(0, Math.min(renderedMatches.length, errorIndex + 1));
+	}
+	return renderedMatches.reduceRight((outlet, match, index) => {
+		let error = match.route.id ? errors == null ? void 0 : errors[match.route.id] : null;
+		// Only data routers handle errors
+		let errorElement = null;
+		if (dataRouterState) {
+			errorElement = match.route.errorElement || defaultErrorElement;
+		}
+		let matches = parentMatches.concat(renderedMatches.slice(0, index + 1));
+		let getChildren = () => {
+			let children;
+			if (error) {
+				children = errorElement;
+			} else if (match.route.Component) {
+				// Note: This is a de-optimized path since React won't re-use the
+				// ReactElement since it's identity changes with each new
+				// React.createElement call.  We keep this so folks can use
+				// `<Route Component={...}>` in `<Routes>` but generally `Component`
+				// usage is only advised in `RouterProvider` when we can convert it to
+				// `element` ahead of time.
+				children = /*#__PURE__*/React.createElement(match.route.Component, null);
+			} else if (match.route.element) {
+				children = match.route.element;
+			} else {
+				children = outlet;
+			}
+			return /*#__PURE__*/React.createElement(RenderedRoute, {
+				match: match,
+				routeContext: {
+					outlet,
+					matches,
+					isDataRoute: dataRouterState != null
+				},
+				children: children
+			});
+		};
+		// Only wrap in an error boundary within data router usages when we have an
+		// ErrorBoundary/errorElement on this route.  Otherwise let it bubble up to
+		// an ancestor ErrorBoundary/errorElement
+		return dataRouterState && (match.route.ErrorBoundary || match.route.errorElement || index === 0) ? /*#__PURE__*/React.createElement(RenderErrorBoundary, {
+			location: dataRouterState.location,
+			revalidation: dataRouterState.revalidation,
+			component: errorElement,
+			error: error,
+			children: getChildren(),
+			routeContext: {
+				outlet: null,
+				matches,
+				isDataRoute: true
+			}
+		}) : getChildren();
+	}, null);
+}
+
+var DataRouterHook$1;
+(function (DataRouterHook) {
+	DataRouterHook["UseBlocker"] = "useBlocker";
+	DataRouterHook["UseRevalidator"] = "useRevalidator";
+	DataRouterHook["UseNavigateStable"] = "useNavigate";
+})(DataRouterHook$1 || (DataRouterHook$1 = {}));
+var DataRouterStateHook$1;
+(function (DataRouterStateHook) {
+	DataRouterStateHook["UseBlocker"] = "useBlocker";
+	DataRouterStateHook["UseLoaderData"] = "useLoaderData";
+	DataRouterStateHook["UseActionData"] = "useActionData";
+	DataRouterStateHook["UseRouteError"] = "useRouteError";
+	DataRouterStateHook["UseNavigation"] = "useNavigation";
+	DataRouterStateHook["UseRouteLoaderData"] = "useRouteLoaderData";
+	DataRouterStateHook["UseMatches"] = "useMatches";
+	DataRouterStateHook["UseRevalidator"] = "useRevalidator";
+	DataRouterStateHook["UseNavigateStable"] = "useNavigate";
+	DataRouterStateHook["UseRouteId"] = "useRouteId";
+})(DataRouterStateHook$1 || (DataRouterStateHook$1 = {}));
+
+function getDataRouterConsoleError$1(hookName) {
+	return hookName + " must be used within a data router.  See https://reactrouter.com/routers/picking-a-router.";
+}
+
+function useDataRouterContext$1(hookName) {
+	let ctx = React.useContext(DataRouterContext);
+	!ctx ? process.env.NODE_ENV !== "production" ? invariant(false, getDataRouterConsoleError$1(hookName)) : invariant(false) : void 0;
+	return ctx;
+}
+
+function useDataRouterState(hookName) {
+	let state = React.useContext(DataRouterStateContext);
+	!state ? process.env.NODE_ENV !== "production" ? invariant(false, getDataRouterConsoleError$1(hookName)) : invariant(false) : void 0;
+	return state;
+}
+
+function useRouteContext(hookName) {
+	let route = React.useContext(RouteContext);
+	!route ? process.env.NODE_ENV !== "production" ? invariant(false, getDataRouterConsoleError$1(hookName)) : invariant(false) : void 0;
+	return route;
+}
+
+// Internal version with hookName-aware debugging
+function useCurrentRouteId(hookName) {
+	let route = useRouteContext(hookName);
+	let thisRoute = route.matches[route.matches.length - 1];
+	!thisRoute.route.id ? process.env.NODE_ENV !== "production" ? invariant(false, hookName + " can only be used on routes that contain a unique \"id\"") : invariant(false) : void 0;
+	return thisRoute.route.id;
+}
+
+/**
+ * Returns the ID for the nearest contextual route
+ */
+function useRouteId() {
+	return useCurrentRouteId(DataRouterStateHook$1.UseRouteId);
+}
+
+/**
+ * Returns the nearest ancestor Route error, which could be a loader/action
+ * error or a render error.  This is intended to be called from your
+ * ErrorBoundary/errorElement to display a proper error message.
+ */
+function useRouteError() {
+	var _state$errors;
+	let error = React.useContext(RouteErrorContext);
+	let state = useDataRouterState(DataRouterStateHook$1.UseRouteError);
+	let routeId = useCurrentRouteId(DataRouterStateHook$1.UseRouteError);
+
+	// If this was a render error, we put it in a RouteError context inside
+	// of RenderErrorBoundary
+	if (error) {
+		return error;
+	}
+
+	// Otherwise look for errors from our data router state
+	return (_state$errors = state.errors) == null ? void 0 : _state$errors[routeId];
+}
+
+/**
+ * Stable version of useNavigate that is used when we are in the context of
+ * a RouterProvider.
+ */
+function useNavigateStable() {
+	let {
+		router
+	} = useDataRouterContext$1(DataRouterHook$1.UseNavigateStable);
+	let id = useCurrentRouteId(DataRouterStateHook$1.UseNavigateStable);
+	let activeRef = React.useRef(false);
+	useIsomorphicLayoutEffect(() => {
+		activeRef.current = true;
+	});
+	let navigate = React.useCallback(function (to, options) {
+		if (options === void 0) {
+			options = {};
+		}
+		process.env.NODE_ENV !== "production" ? warning(activeRef.current, navigateEffectWarning) : void 0;
+
+		// Short circuit here since if this happens on first render the navigate
+		// is useless because we haven't wired up our router subscriber yet
+		if (!activeRef.current) return;
+		if (typeof to === "number") {
+			router.navigate(to);
+		} else {
+			router.navigate(to, _extends$2({
+				fromRouteId: id
+			}, options));
+		}
+	}, [router, id]);
+	return navigate;
+}
+
+const alreadyWarned = {};
+
+function warningOnce(key, cond, message) {
+	if (!cond && !alreadyWarned[key]) {
+		alreadyWarned[key] = true;
+		process.env.NODE_ENV !== "production" ? warning(false, message) : void 0;
+	}
+}
+
+/**
+ * Declares an element that should be rendered at a certain URL path.
+ *
+ * @see https://reactrouter.com/components/route
+ */
+function Route(_props) {
+	process.env.NODE_ENV !== "production" ? invariant(false, "A <Route> is only ever to be used as the child of <Routes> element, " + "never rendered directly. Please wrap your <Route> in a <Routes>.") : invariant(false);
+}
+
+/**
+ * Provides location context for the rest of the app.
+ *
+ * Note: You usually won't render a <Router> directly. Instead, you'll render a
+ * router that is more specific to your environment such as a <BrowserRouter>
+ * in web browsers or a <StaticRouter> for server rendering.
+ *
+ * @see https://reactrouter.com/router-components/router
+ */
+function Router(_ref5) {
+	let {
+		basename: basenameProp = "/",
+		children = null,
+		location: locationProp,
+		navigationType = Action.Pop,
+		navigator,
+		static: staticProp = false
+	} = _ref5;
+	!!useInRouterContext() ? process.env.NODE_ENV !== "production" ? invariant(false, "You cannot render a <Router> inside another <Router>." + " You should never have more than one in your app.") : invariant(false) : void 0;
+
+	// Preserve trailing slashes on basename, so we can let the user control
+	// the enforcement of trailing slashes throughout the app
+	let basename = basenameProp.replace(/^\/*/, "/");
+	let navigationContext = React.useMemo(() => ({
+		basename,
+		navigator,
+		static: staticProp
+	}), [basename, navigator, staticProp]);
+	if (typeof locationProp === "string") {
+		locationProp = parsePath(locationProp);
+	}
+	let {
+		pathname = "/",
+		search = "",
+		hash = "",
+		state = null,
+		key = "default"
+	} = locationProp;
+	let locationContext = React.useMemo(() => {
+		let trailingPathname = stripBasename(pathname, basename);
+		if (trailingPathname == null) {
+			return null;
+		}
+		return {
+			location: {
+				pathname: trailingPathname,
+				search,
+				hash,
+				state,
+				key
+			},
+			navigationType
+		};
+	}, [basename, pathname, search, hash, state, key, navigationType]);
+	process.env.NODE_ENV !== "production" ? warning(locationContext != null, "<Router basename=\"" + basename + "\"> is not able to match the URL " + ("\"" + pathname + search + hash + "\" because it does not start with the ") + "basename, so the <Router> won't render anything.") : void 0;
+	if (locationContext == null) {
+		return null;
+	}
+	return /*#__PURE__*/React.createElement(NavigationContext.Provider, {
+		value: navigationContext
+	}, /*#__PURE__*/React.createElement(LocationContext.Provider, {
+		children: children,
+		value: locationContext
+	}));
+}
+
+/**
+ * A container for a nested tree of <Route> elements that renders the branch
+ * that best matches the current location.
+ *
+ * @see https://reactrouter.com/components/routes
+ */
+function Routes(_ref6) {
+	let {
+		children,
+		location
+	} = _ref6;
+	return useRoutes(createRoutesFromChildren(children), location);
+}
+
+var AwaitRenderStatus;
+(function (AwaitRenderStatus) {
+	AwaitRenderStatus[AwaitRenderStatus["pending"] = 0] = "pending";
+	AwaitRenderStatus[AwaitRenderStatus["success"] = 1] = "success";
+	AwaitRenderStatus[AwaitRenderStatus["error"] = 2] = "error";
+})(AwaitRenderStatus || (AwaitRenderStatus = {}));
+new Promise(() => {
+});
+
+///////////////////////////////////////////////////////////////////////////////
+// UTILS
+///////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Creates a route config from a React "children" object, which is usually
+ * either a `<Route>` element or an array of them. Used internally by
+ * `<Routes>` to create a route config from its children.
+ *
+ * @see https://reactrouter.com/utils/create-routes-from-children
+ */
+function createRoutesFromChildren(children, parentPath) {
+	if (parentPath === void 0) {
+		parentPath = [];
+	}
+	let routes = [];
+	React.Children.forEach(children, (element, index) => {
+		if (! /*#__PURE__*/React.isValidElement(element)) {
+			// Ignore non-elements. This allows people to more easily inline
+			// conditionals in their route config.
+			return;
+		}
+		let treePath = [...parentPath, index];
+		if (element.type === React.Fragment) {
+			// Transparently support React.Fragment and its children.
+			routes.push.apply(routes, createRoutesFromChildren(element.props.children, treePath));
+			return;
+		}
+		!(element.type === Route) ? process.env.NODE_ENV !== "production" ? invariant(false, "[" + (typeof element.type === "string" ? element.type : element.type.name) + "] is not a <Route> component. All component children of <Routes> must be a <Route> or <React.Fragment>") : invariant(false) : void 0;
+		!(!element.props.index || !element.props.children) ? process.env.NODE_ENV !== "production" ? invariant(false, "An index route cannot have child routes.") : invariant(false) : void 0;
+		let route = {
+			id: element.props.id || treePath.join("-"),
+			caseSensitive: element.props.caseSensitive,
+			element: element.props.element,
+			Component: element.props.Component,
+			index: element.props.index,
+			path: element.props.path,
+			loader: element.props.loader,
+			action: element.props.action,
+			errorElement: element.props.errorElement,
+			ErrorBoundary: element.props.ErrorBoundary,
+			hasErrorBoundary: element.props.ErrorBoundary != null || element.props.errorElement != null,
+			shouldRevalidate: element.props.shouldRevalidate,
+			handle: element.props.handle,
+			lazy: element.props.lazy
+		};
+		if (element.props.children) {
+			route.children = createRoutesFromChildren(element.props.children, treePath);
+		}
+		routes.push(route);
+	});
+	return routes;
+}
+
+/**
+ * React Router DOM v6.14.0
+ *
+ * Copyright (c) Remix Software Inc.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE.md file in the root directory of this source tree.
+ *
+ * @license MIT
+ */
+
+function _extends$1() {
+	_extends$1 = Object.assign ? Object.assign.bind() : function (target) {
+		for (var i = 1; i < arguments.length; i++) {
+			var source = arguments[i];
+			for (var key in source) {
+				if (Object.prototype.hasOwnProperty.call(source, key)) {
+					target[key] = source[key];
+				}
+			}
+		}
+		return target;
+	};
+	return _extends$1.apply(this, arguments);
+}
+
+function _objectWithoutPropertiesLoose$1(source, excluded) {
+	if (source == null) return {};
+	var target = {};
+	var sourceKeys = Object.keys(source);
+	var key, i;
+	for (i = 0; i < sourceKeys.length; i++) {
+		key = sourceKeys[i];
+		if (excluded.indexOf(key) >= 0) continue;
+		target[key] = source[key];
+	}
+	return target;
+}
+
+const defaultMethod = "get";
+const defaultEncType = "application/x-www-form-urlencoded";
+
+function isHtmlElement(object) {
+	return object != null && typeof object.tagName === "string";
+}
+
+function isButtonElement(object) {
+	return isHtmlElement(object) && object.tagName.toLowerCase() === "button";
+}
+
+function isFormElement(object) {
+	return isHtmlElement(object) && object.tagName.toLowerCase() === "form";
+}
+
+function isInputElement(object) {
+	return isHtmlElement(object) && object.tagName.toLowerCase() === "input";
+}
+
+function isModifiedEvent(event) {
+	return !!(event.metaKey || event.altKey || event.ctrlKey || event.shiftKey);
+}
+
+function shouldProcessLinkClick(event, target) {
+	return event.button === 0 && (
+			// Ignore everything but left clicks
+			!target || target === "_self") &&
+		// Let browser handle "target=_blank" etc.
+		!isModifiedEvent(event) // Ignore clicks with modifier keys
+		;
+}
+
+// One-time check for submitter support
+let _formDataSupportsSubmitter = null;
+
+function isFormDataSubmitterSupported() {
+	if (_formDataSupportsSubmitter === null) {
+		try {
+			new FormData(document.createElement("form"),
+				// @ts-expect-error if FormData supports the submitter parameter, this will throw
+				0);
+			_formDataSupportsSubmitter = false;
+		} catch (e) {
+			_formDataSupportsSubmitter = true;
+		}
+	}
+	return _formDataSupportsSubmitter;
+}
+
+const supportedFormEncTypes = new Set(["application/x-www-form-urlencoded", "multipart/form-data", "text/plain"]);
+
+function getFormEncType(encType) {
+	if (encType != null && !supportedFormEncTypes.has(encType)) {
+		process.env.NODE_ENV !== "production" ? warning(false, "\"" + encType + "\" is not a valid `encType` for `<Form>`/`<fetcher.Form>` " + ("and will default to \"" + defaultEncType + "\"")) : void 0;
+		return null;
+	}
+	return encType;
+}
+
+function getFormSubmissionInfo(target, basename) {
+	let method;
+	let action;
+	let encType;
+	let formData;
+	let body;
+	if (isFormElement(target)) {
+		// When grabbing the action from the element, it will have had the basename
+		// prefixed to ensure non-JS scenarios work, so strip it since we'll
+		// re-prefix in the router
+		let attr = target.getAttribute("action");
+		action = attr ? stripBasename(attr, basename) : null;
+		method = target.getAttribute("method") || defaultMethod;
+		encType = getFormEncType(target.getAttribute("enctype")) || defaultEncType;
+		formData = new FormData(target);
+	} else if (isButtonElement(target) || isInputElement(target) && (target.type === "submit" || target.type === "image")) {
+		let form = target.form;
+		if (form == null) {
+			throw new Error("Cannot submit a <button> or <input type=\"submit\"> without a <form>");
+		}
+		// <button>/<input type="submit"> may override attributes of <form>
+		// When grabbing the action from the element, it will have had the basename
+		// prefixed to ensure non-JS scenarios work, so strip it since we'll
+		// re-prefix in the router
+		let attr = target.getAttribute("formaction") || form.getAttribute("action");
+		action = attr ? stripBasename(attr, basename) : null;
+		method = target.getAttribute("formmethod") || form.getAttribute("method") || defaultMethod;
+		encType = getFormEncType(target.getAttribute("formenctype")) || getFormEncType(form.getAttribute("enctype")) || defaultEncType;
+		// Build a FormData object populated from a form and submitter
+		formData = new FormData(form, target);
+		// If this browser doesn't support the `FormData(el, submitter)` format,
+		// then tack on the submitter value at the end.  This is a lightweight
+		// solution that is not 100% spec compliant.  For complete support in older
+		// browsers, consider using the `formdata-submitter-polyfill` package
+		if (!isFormDataSubmitterSupported()) {
+			let {
+				name,
+				type,
+				value
+			} = target;
+			if (type === "image") {
+				let prefix = name ? name + "." : "";
+				formData.append(prefix + "x", "0");
+				formData.append(prefix + "y", "0");
+			} else if (name) {
+				formData.append(name, value);
+			}
+		}
+	} else if (isHtmlElement(target)) {
+		throw new Error("Cannot submit element that is not <form>, <button>, or " + "<input type=\"submit|image\">");
+	} else {
+		method = defaultMethod;
+		action = null;
+		encType = defaultEncType;
+		body = target;
+	}
+	// Send body for <Form encType="text/plain" so we encode it into text
+	if (formData && encType === "text/plain") {
+		body = formData;
+		formData = undefined;
+	}
+	return {
+		action,
+		method: method.toLowerCase(),
+		encType,
+		formData,
+		body
+	};
+}
+
+const _excluded$A = ["onClick", "relative", "reloadDocument", "replace", "state", "target", "to", "preventScrollReset"],
+	_excluded2$3 = ["aria-current", "caseSensitive", "className", "end", "style", "to", "children"],
+	_excluded3$1 = ["reloadDocument", "replace", "method", "action", "onSubmit", "submit", "relative", "preventScrollReset"];
+//#endregion
+////////////////////////////////////////////////////////////////////////////////
+//#region Components
+////////////////////////////////////////////////////////////////////////////////
+/**
+ Webpack + React 17 fails to compile on any of the following because webpack
+ complains that `startTransition` doesn't exist in `React`:
+ * import { startTransition } from "react"
+ * import * as React from from "react";
+ "startTransition" in React ? React.startTransition(() => setState()) : setState()
+ * import * as React from from "react";
+ "startTransition" in React ? React["startTransition"](() => setState()) : setState()
+
+ Moving it to a constant such as the following solves the Webpack/React 17 issue:
+ * import * as React from from "react";
+ const START_TRANSITION = "startTransition";
+ START_TRANSITION in React ? React[START_TRANSITION](() => setState()) : setState()
+
+ However, that introduces webpack/terser minification issues in production builds
+ in React 18 where minification/obfuscation ends up removing the call of
+ React.startTransition entirely from the first half of the ternary.  Grabbing
+ this exported reference once up front resolves that issue.
+
+ See https://github.com/remix-run/react-router/issues/10579
+ */
+const START_TRANSITION = "startTransition";
+const startTransitionImpl = React[START_TRANSITION];
+
+/**
+ * A `<Router>` for use in web browsers. Provides the cleanest URLs.
+ */
+function BrowserRouter(_ref) {
+	let {
+		basename,
+		children,
+		future,
+		window
+	} = _ref;
+	let historyRef = React.useRef();
+	if (historyRef.current == null) {
+		historyRef.current = createBrowserHistory({
+			window,
+			v5Compat: true
+		});
+	}
+	let history = historyRef.current;
+	let [state, setStateImpl] = React.useState({
+		action: history.action,
+		location: history.location
+	});
+	let {
+		v7_startTransition
+	} = future || {};
+	let setState = React.useCallback(newState => {
+		v7_startTransition && startTransitionImpl ? startTransitionImpl(() => setStateImpl(newState)) : setStateImpl(newState);
+	}, [setStateImpl, v7_startTransition]);
+	React.useLayoutEffect(() => history.listen(setState), [history, setState]);
+	return /*#__PURE__*/React.createElement(Router, {
+		basename: basename,
+		children: children,
+		location: state.location,
+		navigationType: state.action,
+		navigator: history
+	});
+}
+
+if (process.env.NODE_ENV !== "production") ;
+const isBrowser$6 = typeof window !== "undefined" && typeof window.document !== "undefined" && typeof window.document.createElement !== "undefined";
+const ABSOLUTE_URL_REGEX = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
+/**
+ * The public API for rendering a history-aware <a>.
+ */
+const Link = /*#__PURE__*/React.forwardRef(function LinkWithRef(_ref4, ref) {
+	let {
+			onClick,
+			relative,
+			reloadDocument,
+			replace,
+			state,
+			target,
+			to,
+			preventScrollReset
+		} = _ref4,
+		rest = _objectWithoutPropertiesLoose$1(_ref4, _excluded$A);
+	let {
+		basename
+	} = React.useContext(NavigationContext);
+	// Rendered into <a href> for absolute URLs
+	let absoluteHref;
+	let isExternal = false;
+	if (typeof to === "string" && ABSOLUTE_URL_REGEX.test(to)) {
+		// Render the absolute href server- and client-side
+		absoluteHref = to;
+		// Only check for external origins client-side
+		if (isBrowser$6) {
+			try {
+				let currentUrl = new URL(window.location.href);
+				let targetUrl = to.startsWith("//") ? new URL(currentUrl.protocol + to) : new URL(to);
+				let path = stripBasename(targetUrl.pathname, basename);
+				if (targetUrl.origin === currentUrl.origin && path != null) {
+					// Strip the protocol/origin/basename for same-origin absolute URLs
+					to = path + targetUrl.search + targetUrl.hash;
+				} else {
+					isExternal = true;
+				}
+			} catch (e) {
+				// We can't do external URL detection without a valid URL
+				process.env.NODE_ENV !== "production" ? warning(false, "<Link to=\"" + to + "\"> contains an invalid URL which will probably break " + "when clicked - please update to a valid URL path.") : void 0;
+			}
+		}
+	}
+	// Rendered into <a href> for relative URLs
+	let href = useHref(to, {
+		relative
+	});
+	let internalOnClick = useLinkClickHandler(to, {
+		replace,
+		state,
+		target,
+		preventScrollReset,
+		relative
+	});
+
+	function handleClick(event) {
+		if (onClick) onClick(event);
+		if (!event.defaultPrevented) {
+			internalOnClick(event);
+		}
+	}
+
+	return (
+		/*#__PURE__*/
+		// eslint-disable-next-line jsx-a11y/anchor-has-content
+		React.createElement("a", _extends$1({}, rest, {
+			href: absoluteHref || href,
+			onClick: isExternal || reloadDocument ? onClick : handleClick,
+			ref: ref,
+			target: target
+		}))
+	);
+});
+if (process.env.NODE_ENV !== "production") {
+	Link.displayName = "Link";
+}
+/**
+ * A <Link> wrapper that knows if it's "active" or not.
+ */
+const NavLink = /*#__PURE__*/React.forwardRef(function NavLinkWithRef(_ref5, ref) {
+	let {
+			"aria-current": ariaCurrentProp = "page",
+			caseSensitive = false,
+			className: classNameProp = "",
+			end = false,
+			style: styleProp,
+			to,
+			children
+		} = _ref5,
+		rest = _objectWithoutPropertiesLoose$1(_ref5, _excluded2$3);
+	let path = useResolvedPath(to, {
+		relative: rest.relative
+	});
+	let location = useLocation();
+	let routerState = React.useContext(DataRouterStateContext);
+	let {
+		navigator
+	} = React.useContext(NavigationContext);
+	let toPathname = navigator.encodeLocation ? navigator.encodeLocation(path).pathname : path.pathname;
+	let locationPathname = location.pathname;
+	let nextLocationPathname = routerState && routerState.navigation && routerState.navigation.location ? routerState.navigation.location.pathname : null;
+	if (!caseSensitive) {
+		locationPathname = locationPathname.toLowerCase();
+		nextLocationPathname = nextLocationPathname ? nextLocationPathname.toLowerCase() : null;
+		toPathname = toPathname.toLowerCase();
+	}
+	let isActive = locationPathname === toPathname || !end && locationPathname.startsWith(toPathname) && locationPathname.charAt(toPathname.length) === "/";
+	let isPending = nextLocationPathname != null && (nextLocationPathname === toPathname || !end && nextLocationPathname.startsWith(toPathname) && nextLocationPathname.charAt(toPathname.length) === "/");
+	let ariaCurrent = isActive ? ariaCurrentProp : undefined;
+	let className;
+	if (typeof classNameProp === "function") {
+		className = classNameProp({
+			isActive,
+			isPending
+		});
+	} else {
+		// If the className prop is not a function, we use a default `active`
+		// class for <NavLink />s that are active. In v5 `active` was the default
+		// value for `activeClassName`, but we are removing that API and can still
+		// use the old default behavior for a cleaner upgrade path and keep the
+		// simple styling rules working as they currently do.
+		className = [classNameProp, isActive ? "active" : null, isPending ? "pending" : null].filter(Boolean).join(" ");
+	}
+	let style = typeof styleProp === "function" ? styleProp({
+		isActive,
+		isPending
+	}) : styleProp;
+	return /*#__PURE__*/React.createElement(Link, _extends$1({}, rest, {
+		"aria-current": ariaCurrent,
+		className: className,
+		ref: ref,
+		style: style,
+		to: to
+	}), typeof children === "function" ? children({
+		isActive,
+		isPending
+	}) : children);
+});
+if (process.env.NODE_ENV !== "production") {
+	NavLink.displayName = "NavLink";
+}
+/**
+ * A `@remix-run/router`-aware `<form>`. It behaves like a normal form except
+ * that the interaction with the server is with `fetch` instead of new document
+ * requests, allowing components to add nicer UX to the page as the form is
+ * submitted and returns with data.
+ */
+const Form = /*#__PURE__*/React.forwardRef((props, ref) => {
+	let submit = useSubmit();
+	return /*#__PURE__*/React.createElement(FormImpl, _extends$1({}, props, {
+		submit: submit,
+		ref: ref
+	}));
+});
+if (process.env.NODE_ENV !== "production") {
+	Form.displayName = "Form";
+}
+const FormImpl = /*#__PURE__*/React.forwardRef((_ref6, forwardedRef) => {
+	let {
+			reloadDocument,
+			replace,
+			method = defaultMethod,
+			action,
+			onSubmit,
+			submit,
+			relative,
+			preventScrollReset
+		} = _ref6,
+		props = _objectWithoutPropertiesLoose$1(_ref6, _excluded3$1);
+	let formMethod = method.toLowerCase() === "get" ? "get" : "post";
+	let formAction = useFormAction(action, {
+		relative
+	});
+	let submitHandler = event => {
+		onSubmit && onSubmit(event);
+		if (event.defaultPrevented) return;
+		event.preventDefault();
+		let submitter = event.nativeEvent.submitter;
+		let submitMethod = (submitter == null ? void 0 : submitter.getAttribute("formmethod")) || method;
+		submit(submitter || event.currentTarget, {
+			method: submitMethod,
+			replace,
+			relative,
+			preventScrollReset
+		});
+	};
+	return /*#__PURE__*/React.createElement("form", _extends$1({
+		ref: forwardedRef,
+		method: formMethod,
+		action: formAction,
+		onSubmit: reloadDocument ? onSubmit : submitHandler
+	}, props));
+});
+if (process.env.NODE_ENV !== "production") {
+	FormImpl.displayName = "FormImpl";
+}
+if (process.env.NODE_ENV !== "production") ;
+//#endregion
+////////////////////////////////////////////////////////////////////////////////
+//#region Hooks
+////////////////////////////////////////////////////////////////////////////////
+var DataRouterHook;
+(function (DataRouterHook) {
+	DataRouterHook["UseScrollRestoration"] = "useScrollRestoration";
+	DataRouterHook["UseSubmit"] = "useSubmit";
+	DataRouterHook["UseSubmitFetcher"] = "useSubmitFetcher";
+	DataRouterHook["UseFetcher"] = "useFetcher";
+})(DataRouterHook || (DataRouterHook = {}));
+var DataRouterStateHook;
+(function (DataRouterStateHook) {
+	DataRouterStateHook["UseFetchers"] = "useFetchers";
+	DataRouterStateHook["UseScrollRestoration"] = "useScrollRestoration";
+})(DataRouterStateHook || (DataRouterStateHook = {}));
+
+function getDataRouterConsoleError(hookName) {
+	return hookName + " must be used within a data router.  See https://reactrouter.com/routers/picking-a-router.";
+}
+
+function useDataRouterContext(hookName) {
+	let ctx = React.useContext(DataRouterContext);
+	!ctx ? process.env.NODE_ENV !== "production" ? invariant(false, getDataRouterConsoleError(hookName)) : invariant(false) : void 0;
+	return ctx;
+}
+
+/**
+ * Handles the click behavior for router `<Link>` components. This is useful if
+ * you need to create custom `<Link>` components with the same click behavior we
+ * use in our exported `<Link>`.
+ */
+function useLinkClickHandler(to, _temp) {
+	let {
+		target,
+		replace: replaceProp,
+		state,
+		preventScrollReset,
+		relative
+	} = _temp === void 0 ? {} : _temp;
+	let navigate = useNavigate();
+	let location = useLocation();
+	let path = useResolvedPath(to, {
+		relative
+	});
+	return React.useCallback(event => {
+		if (shouldProcessLinkClick(event, target)) {
+			event.preventDefault();
+			// If the URL hasn't changed, a regular <a> will do a replace instead of
+			// a push, so do the same here unless the replace prop is explicitly set
+			let replace = replaceProp !== undefined ? replaceProp : createPath(location) === createPath(path);
+			navigate(to, {
+				replace,
+				state,
+				preventScrollReset,
+				relative
+			});
+		}
+	}, [location, navigate, path, replaceProp, state, target, to, preventScrollReset, relative]);
+}
+
+function validateClientSideSubmission() {
+	if (typeof document === "undefined") {
+		throw new Error("You are calling submit during the server render. " + "Try calling submit within a `useEffect` or callback instead.");
+	}
+}
+
+/**
+ * Returns a function that may be used to programmatically submit a form (or
+ * some arbitrary data) to the server.
+ */
+function useSubmit() {
+	let {
+		router
+	} = useDataRouterContext(DataRouterHook.UseSubmit);
+	let {
+		basename
+	} = React.useContext(NavigationContext);
+	let currentRouteId = useRouteId();
+	return React.useCallback(function (target, options) {
+		if (options === void 0) {
+			options = {};
+		}
+		validateClientSideSubmission();
+		let {
+			action,
+			method,
+			encType,
+			formData,
+			body
+		} = getFormSubmissionInfo(target, basename);
+		router.navigate(options.action || action, {
+			preventScrollReset: options.preventScrollReset,
+			formData,
+			body,
+			formMethod: options.method || method,
+			formEncType: options.encType || encType,
+			replace: options.replace,
+			fromRouteId: currentRouteId
+		});
+	}, [router, basename, currentRouteId]);
+}
+
+// v7: Eventually we should deprecate this entirely in favor of using the
+// router method directly?
+function useFormAction(action, _temp2) {
+	let {
+		relative
+	} = _temp2 === void 0 ? {} : _temp2;
+	let {
+		basename
+	} = React.useContext(NavigationContext);
+	let routeContext = React.useContext(RouteContext);
+	!routeContext ? process.env.NODE_ENV !== "production" ? invariant(false, "useFormAction must be used inside a RouteContext") : invariant(false) : void 0;
+	let [match] = routeContext.matches.slice(-1);
+	// Shallow clone path so we can modify it below, otherwise we modify the
+	// object referenced by useMemo inside useResolvedPath
+	let path = _extends$1({}, useResolvedPath(action ? action : ".", {
+		relative
+	}));
+	// Previously we set the default action to ".". The problem with this is that
+	// `useResolvedPath(".")` excludes search params and the hash of the resolved
+	// URL. This is the intended behavior of when "." is specifically provided as
+	// the form action, but inconsistent w/ browsers when the action is omitted.
+	// https://github.com/remix-run/remix/issues/927
+	let location = useLocation();
+	if (action == null) {
+		// Safe to write to these directly here since if action was undefined, we
+		// would have called useResolvedPath(".") which will never include a search
+		// or hash
+		path.search = location.search;
+		path.hash = location.hash;
+		// When grabbing search params from the URL, remove the automatically
+		// inserted ?index param so we match the useResolvedPath search behavior
+		// which would not include ?index
+		if (match.route.index) {
+			let params = new URLSearchParams(path.search);
+			params.delete("index");
+			path.search = params.toString() ? "?" + params.toString() : "";
+		}
+	}
+	if ((!action || action === ".") && match.route.index) {
+		path.search = path.search ? path.search.replace(/^\?/, "?index&") : "?index";
+	}
+	// If we're operating within a basename, prepend it to the pathname prior
+	// to creating the form action.  If this is a root navigation, then just use
+	// the raw basename which allows the basename to have full control over the
+	// presence of a trailing slash on root actions
+	if (basename !== "/") {
+		path.pathname = path.pathname === "/" ? basename : joinPaths([basename, path.pathname]);
+	}
+	return createPath(path);
+}
+
 function _objectWithoutPropertiesLoose(source, excluded) {
-  if (source == null) return {};
-  var target = {};
-  var sourceKeys = Object.keys(source);
-  var key, i;
-  for (i = 0; i < sourceKeys.length; i++) {
-    key = sourceKeys[i];
-    if (excluded.indexOf(key) >= 0) continue;
-    target[key] = source[key];
+	if (source == null) return {};
+	var target = {};
+	var sourceKeys = Object.keys(source);
+	var key, i;
+	for (i = 0; i < sourceKeys.length; i++) {
+		key = sourceKeys[i];
+		if (excluded.indexOf(key) >= 0) continue;
+		target[key] = source[key];
   }
   return target;
 }
@@ -2457,7 +4663,7 @@ function mergeSlotProps(parameters) {
   };
 }
 
-const _excluded$y = ["elementType", "externalSlotProps", "ownerState"];
+const _excluded$z = ["elementType", "externalSlotProps", "ownerState"];
 /**
  * @ignore - do not document.
  * Builds the props to be passed into the slot of an unstyled component.
@@ -2467,14 +4673,14 @@ const _excluded$y = ["elementType", "externalSlotProps", "ownerState"];
  * @param parameters.getSlotProps - A function that returns the props to be passed to the slot component.
  */
 function useSlotProps(parameters) {
-  var _parameters$additiona;
-  const {
-      elementType,
-      externalSlotProps,
-      ownerState
-    } = parameters,
-    rest = _objectWithoutPropertiesLoose(parameters, _excluded$y);
-  const resolvedComponentsProps = resolveComponentProps(externalSlotProps, ownerState);
+	var _parameters$additiona;
+	const {
+			elementType,
+			externalSlotProps,
+			ownerState
+		} = parameters,
+		rest = _objectWithoutPropertiesLoose(parameters, _excluded$z);
+	const resolvedComponentsProps = resolveComponentProps(externalSlotProps, ownerState);
   const {
     props: mergedProps,
     internalRef
@@ -4689,8 +6895,8 @@ function getPopperUtilityClass(slot) {
 }
 generateUtilityClasses('MuiPopper', ['root']);
 
-const _excluded$x = ["anchorEl", "children", "direction", "disablePortal", "modifiers", "open", "placement", "popperOptions", "popperRef", "slotProps", "slots", "TransitionProps", "ownerState"],
-  _excluded2$2 = ["anchorEl", "children", "container", "direction", "disablePortal", "keepMounted", "modifiers", "open", "placement", "popperOptions", "popperRef", "style", "transition", "slotProps", "slots"];
+const _excluded$y = ["anchorEl", "children", "direction", "disablePortal", "modifiers", "open", "placement", "popperOptions", "popperRef", "slotProps", "slots", "TransitionProps", "ownerState"],
+	_excluded2$2 = ["anchorEl", "children", "container", "direction", "disablePortal", "keepMounted", "modifiers", "open", "placement", "popperOptions", "popperRef", "style", "transition", "slotProps", "slots"];
 function flipPlacement(placement, direction) {
   if (direction === 'ltr') {
     return placement;
@@ -4717,11 +6923,12 @@ function isHTMLElement(element) {
 function isVirtualElement(element) {
   return !isHTMLElement(element);
 }
-const useUtilityClasses$h = () => {
-  const slots = {
-    root: ['root']
-  };
-  return composeClasses(slots, useClassNamesOverride(getPopperUtilityClass));
+
+const useUtilityClasses$i = () => {
+	const slots = {
+		root: ['root']
+	};
+	return composeClasses(slots, useClassNamesOverride(getPopperUtilityClass));
 };
 const defaultPopperOptions = {};
 const PopperTooltip = /*#__PURE__*/React.forwardRef(function PopperTooltip(props, forwardedRef) {
@@ -4732,18 +6939,18 @@ const PopperTooltip = /*#__PURE__*/React.forwardRef(function PopperTooltip(props
       direction,
       disablePortal,
       modifiers,
-      open,
-      placement: initialPlacement,
-      popperOptions,
-      popperRef: popperRefProp,
-      slotProps = {},
-      slots = {},
-      TransitionProps
-      // @ts-ignore internal logic
-      // prevent from spreading to DOM, it can come from the parent component e.g. Select.
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$x);
-  const tooltipRef = React.useRef(null);
+		  open,
+		  placement: initialPlacement,
+		  popperOptions,
+		  popperRef: popperRefProp,
+		  slotProps = {},
+		  slots = {},
+		  TransitionProps
+		  // @ts-ignore internal logic
+		  // prevent from spreading to DOM, it can come from the parent component e.g. Select.
+	  } = props,
+	  other = _objectWithoutPropertiesLoose(props, _excluded$y);
+	const tooltipRef = React.useRef(null);
   const ownRef = useForkRef(tooltipRef, forwardedRef);
   const popperRef = React.useRef(null);
   const handlePopperRef = useForkRef(popperRef, popperRefProp);
@@ -4827,8 +7034,8 @@ const PopperTooltip = /*#__PURE__*/React.forwardRef(function PopperTooltip(props
   if (TransitionProps !== null) {
     childProps.TransitionProps = TransitionProps;
   }
-  const classes = useUtilityClasses$h();
-  const Root = (_slots$root = slots.root) != null ? _slots$root : 'div';
+	const classes = useUtilityClasses$i();
+	const Root = (_slots$root = slots.root) != null ? _slots$root : 'div';
   const rootProps = useSlotProps({
     elementType: Root,
     externalSlotProps: slotProps.root,
@@ -5259,27 +7466,29 @@ class ModalManager {
     }
     return modalIndex;
   }
-  isTopModal(modal) {
-    return this.modals.length > 0 && this.modals[this.modals.length - 1] === modal;
-  }
+
+	isTopModal(modal) {
+		return this.modals.length > 0 && this.modals[this.modals.length - 1] === modal;
+	}
 }
 
 function getModalUtilityClass(slot) {
-  return generateUtilityClass('MuiModal', slot);
+	return generateUtilityClass('MuiModal', slot);
 }
+
 generateUtilityClasses('MuiModal', ['root', 'hidden', 'backdrop']);
 
-const _excluded$w = ["children", "closeAfterTransition", "container", "disableAutoFocus", "disableEnforceFocus", "disableEscapeKeyDown", "disablePortal", "disableRestoreFocus", "disableScrollLock", "hideBackdrop", "keepMounted", "manager", "onBackdropClick", "onClose", "onKeyDown", "open", "onTransitionEnter", "onTransitionExited", "slotProps", "slots"];
-const useUtilityClasses$g = ownerState => {
-  const {
-    open,
-    exited
-  } = ownerState;
-  const slots = {
-    root: ['root', !open && exited && 'hidden'],
-    backdrop: ['backdrop']
-  };
-  return composeClasses(slots, useClassNamesOverride(getModalUtilityClass));
+const _excluded$x = ["children", "closeAfterTransition", "container", "disableAutoFocus", "disableEnforceFocus", "disableEscapeKeyDown", "disablePortal", "disableRestoreFocus", "disableScrollLock", "hideBackdrop", "keepMounted", "manager", "onBackdropClick", "onClose", "onKeyDown", "open", "onTransitionEnter", "onTransitionExited", "slotProps", "slots"];
+const useUtilityClasses$h = ownerState => {
+	const {
+		open,
+		exited
+	} = ownerState;
+	const slots = {
+		root: ['root', !open && exited && 'hidden'],
+		backdrop: ['backdrop']
+	};
+	return composeClasses(slots, useClassNamesOverride(getModalUtilityClass));
 };
 function getContainer(container) {
   return typeof container === 'function' ? container() : container;
@@ -5328,17 +7537,17 @@ const Modal$2 = /*#__PURE__*/React.forwardRef(function Modal(props, forwardedRef
       hideBackdrop = false,
       keepMounted = false,
       // private
-      manager: managerProp = defaultManager,
-      onBackdropClick,
-      onClose,
-      onKeyDown,
-      open,
-      onTransitionEnter,
-      onTransitionExited,
-      slotProps = {},
-      slots = {}
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$w);
+		  manager: managerProp = defaultManager,
+		  onBackdropClick,
+		  onClose,
+		  onKeyDown,
+		  open,
+		  onTransitionEnter,
+		  onTransitionExited,
+		  slotProps = {},
+		  slots = {}
+	  } = props,
+	  other = _objectWithoutPropertiesLoose(props, _excluded$x);
   // TODO: `modal`` must change its type in this file to match the type of methods
   // provided by `ModalManager`
   const manager = managerProp;
@@ -5403,23 +7612,23 @@ const Modal$2 = /*#__PURE__*/React.forwardRef(function Modal(props, forwardedRef
   }, [open, handleClose, hasTransition, closeAfterTransition, handleOpen]);
   const ownerState = _extends({}, props, {
     closeAfterTransition,
-    disableAutoFocus,
-    disableEnforceFocus,
-    disableEscapeKeyDown,
-    disablePortal,
-    disableRestoreFocus,
-    disableScrollLock,
-    exited,
-    hideBackdrop,
-    keepMounted
+	  disableAutoFocus,
+	  disableEnforceFocus,
+	  disableEscapeKeyDown,
+	  disablePortal,
+	  disableRestoreFocus,
+	  disableScrollLock,
+	  exited,
+	  hideBackdrop,
+	  keepMounted
   });
-  const classes = useUtilityClasses$g(ownerState);
-  const handleEnter = () => {
-    setExited(false);
-    if (onTransitionEnter) {
-      onTransitionEnter();
-    }
-  };
+	const classes = useUtilityClasses$h(ownerState);
+	const handleEnter = () => {
+		setExited(false);
+		if (onTransitionEnter) {
+			onTransitionEnter();
+		}
+	};
   const handleExited = () => {
     setExited(true);
     if (onTransitionExited) {
@@ -8579,17 +10788,17 @@ const internal_processStyles = (tag, processor) => {
   }
 };
 
-const _excluded$v = ["values", "unit", "step"];
+const _excluded$w = ["values", "unit", "step"];
 const sortBreakpointsValues = values => {
-  const breakpointsAsArray = Object.keys(values).map(key => ({
-    key,
-    val: values[key]
-  })) || [];
-  // Sort in ascending order
-  breakpointsAsArray.sort((breakpoint1, breakpoint2) => breakpoint1.val - breakpoint2.val);
-  return breakpointsAsArray.reduce((acc, obj) => {
-    return _extends({}, acc, {
-      [obj.key]: obj.val
+	const breakpointsAsArray = Object.keys(values).map(key => ({
+		key,
+		val: values[key]
+	})) || [];
+	// Sort in ascending order
+	breakpointsAsArray.sort((breakpoint1, breakpoint2) => breakpoint1.val - breakpoint2.val);
+	return breakpointsAsArray.reduce((acc, obj) => {
+		return _extends({}, acc, {
+			[obj.key]: obj.val
     });
   }, {});
 };
@@ -8604,18 +10813,18 @@ function createBreakpoints(breakpoints) {
         // phone
         sm: 600,
         // tablet
-        md: 900,
-        // small laptop
-        lg: 1200,
-        // desktop
-        xl: 1536 // large screen
-      },
+		  md: 900,
+		  // small laptop
+		  lg: 1200,
+		  // desktop
+		  xl: 1536 // large screen
+	  },
 
-      unit = 'px',
-      step = 5
-    } = breakpoints,
-    other = _objectWithoutPropertiesLoose(breakpoints, _excluded$v);
-  const sortedValues = sortBreakpointsValues(values);
+		  unit = 'px',
+		  step = 5
+	  } = breakpoints,
+	  other = _objectWithoutPropertiesLoose(breakpoints, _excluded$w);
+	const sortedValues = sortBreakpointsValues(values);
   const keys = Object.keys(sortedValues);
   function up(key) {
     const value = typeof values[key] === 'number' ? values[key] : key;
@@ -8731,25 +10940,76 @@ function createEmptyBreakpointObject(breakpointsInput = {}) {
   return breakpointsInOrder || {};
 }
 function removeUnusedBreakpoints(breakpointKeys, style) {
-  return breakpointKeys.reduce((acc, key) => {
-    const breakpointOutput = acc[key];
-    const isBreakpointUnused = !breakpointOutput || Object.keys(breakpointOutput).length === 0;
-    if (isBreakpointUnused) {
-      delete acc[key];
-    }
-    return acc;
-  }, style);
+	return breakpointKeys.reduce((acc, key) => {
+		const breakpointOutput = acc[key];
+		const isBreakpointUnused = !breakpointOutput || Object.keys(breakpointOutput).length === 0;
+		if (isBreakpointUnused) {
+			delete acc[key];
+		}
+		return acc;
+	}, style);
+}
+
+// compute base for responsive values; e.g.,
+// [1,2,3] => {xs: true, sm: true, md: true}
+// {xs: 1, sm: 2, md: 3} => {xs: true, sm: true, md: true}
+function computeBreakpointsBase(breakpointValues, themeBreakpoints) {
+	// fixed value
+	if (typeof breakpointValues !== 'object') {
+		return {};
+	}
+	const base = {};
+	const breakpointsKeys = Object.keys(themeBreakpoints);
+	if (Array.isArray(breakpointValues)) {
+		breakpointsKeys.forEach((breakpoint, i) => {
+			if (i < breakpointValues.length) {
+				base[breakpoint] = true;
+			}
+		});
+	} else {
+		breakpointsKeys.forEach(breakpoint => {
+			if (breakpointValues[breakpoint] != null) {
+				base[breakpoint] = true;
+			}
+		});
+	}
+	return base;
+}
+
+function resolveBreakpointValues({
+									 values: breakpointValues,
+									 breakpoints: themeBreakpoints,
+									 base: customBase
+								 }) {
+	const base = customBase || computeBreakpointsBase(breakpointValues, themeBreakpoints);
+	const keys = Object.keys(base);
+	if (keys.length === 0) {
+		return breakpointValues;
+	}
+	let previous;
+	return keys.reduce((acc, breakpoint, i) => {
+		if (Array.isArray(breakpointValues)) {
+			acc[breakpoint] = breakpointValues[i] != null ? breakpointValues[i] : breakpointValues[previous];
+			previous = i;
+		} else if (typeof breakpointValues === 'object') {
+			acc[breakpoint] = breakpointValues[breakpoint] != null ? breakpointValues[breakpoint] : breakpointValues[previous];
+			previous = breakpoint;
+		} else {
+			acc[breakpoint] = breakpointValues;
+		}
+		return acc;
+	}, {});
 }
 
 function getPath(obj, path, checkVars = true) {
-  if (!path || typeof path !== 'string') {
-    return null;
-  }
+	if (!path || typeof path !== 'string') {
+		return null;
+	}
 
-  // Check if CSS variables are used
-  if (obj && obj.vars && checkVars) {
-    const val = `vars.${path}`.split('.').reduce((acc, item) => acc && acc[item] ? acc[item] : null, obj);
-    if (val != null) {
+	// Check if CSS variables are used
+	if (obj && obj.vars && checkVars) {
+		const val = `vars.${path}`.split('.').reduce((acc, item) => acc && acc[item] ? acc[item] : null, obj);
+		if (val != null) {
       return val;
     }
   }
@@ -9643,16 +11903,16 @@ const styleFunctionSx = unstable_createStyleFunctionSx();
 styleFunctionSx.filterProps = ['sx'];
 var styleFunctionSx$1 = styleFunctionSx;
 
-const _excluded$u = ["breakpoints", "palette", "spacing", "shape"];
+const _excluded$v = ["breakpoints", "palette", "spacing", "shape"];
 function createTheme$1(options = {}, ...args) {
-  const {
-      breakpoints: breakpointsInput = {},
-      palette: paletteInput = {},
-      spacing: spacingInput,
-      shape: shapeInput = {}
-    } = options,
-    other = _objectWithoutPropertiesLoose(options, _excluded$u);
-  const breakpoints = createBreakpoints(breakpointsInput);
+	const {
+			breakpoints: breakpointsInput = {},
+			palette: paletteInput = {},
+			spacing: spacingInput,
+			shape: shapeInput = {}
+		} = options,
+		other = _objectWithoutPropertiesLoose(options, _excluded$v);
+	const breakpoints = createBreakpoints(breakpointsInput);
   const spacing = createSpacing(spacingInput);
   let muiTheme = deepmerge({
     breakpoints,
@@ -9689,17 +11949,17 @@ function useTheme$1(defaultTheme = systemDefaultTheme$1) {
   return useTheme$2(defaultTheme);
 }
 
-const _excluded$t = ["sx"];
+const _excluded$u = ["sx"];
 const splitProps = props => {
-  var _props$theme$unstable, _props$theme;
-  const result = {
-    systemProps: {},
-    otherProps: {}
-  };
-  const config = (_props$theme$unstable = props == null ? void 0 : (_props$theme = props.theme) == null ? void 0 : _props$theme.unstable_sxConfig) != null ? _props$theme$unstable : defaultSxConfig$1;
-  Object.keys(props).forEach(prop => {
-    if (config[prop]) {
-      result.systemProps[prop] = props[prop];
+	var _props$theme$unstable, _props$theme;
+	const result = {
+		systemProps: {},
+		otherProps: {}
+	};
+	const config = (_props$theme$unstable = props == null ? void 0 : (_props$theme = props.theme) == null ? void 0 : _props$theme.unstable_sxConfig) != null ? _props$theme$unstable : defaultSxConfig$1;
+	Object.keys(props).forEach(prop => {
+		if (config[prop]) {
+			result.systemProps[prop] = props[prop];
     } else {
       result.otherProps[prop] = props[prop];
     }
@@ -9707,14 +11967,14 @@ const splitProps = props => {
   return result;
 };
 function extendSxProp(props) {
-  const {
-      sx: inSx
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$t);
-  const {
-    systemProps,
-    otherProps
-  } = splitProps(other);
+	const {
+			sx: inSx
+		} = props,
+		other = _objectWithoutPropertiesLoose(props, _excluded$u);
+	const {
+		systemProps,
+		otherProps
+	} = splitProps(other);
   let finalSx;
   if (Array.isArray(inSx)) {
     finalSx = [systemProps, ...inSx];
@@ -9734,7 +11994,7 @@ function extendSxProp(props) {
   });
 }
 
-const _excluded$s = ["className", "component"];
+const _excluded$t = ["className", "component"];
 function createBox(options = {}) {
   const {
     themeId,
@@ -9746,13 +12006,13 @@ function createBox(options = {}) {
     shouldForwardProp: prop => prop !== 'theme' && prop !== 'sx' && prop !== 'as'
   })(styleFunctionSx$1);
   const Box = /*#__PURE__*/React.forwardRef(function Box(inProps, ref) {
-    const theme = useTheme$1(defaultTheme);
-    const _extendSxProp = extendSxProp(inProps),
-      {
-        className,
-        component = 'div'
-      } = _extendSxProp,
-      other = _objectWithoutPropertiesLoose(_extendSxProp, _excluded$s);
+	  const theme = useTheme$1(defaultTheme);
+	  const _extendSxProp = extendSxProp(inProps),
+		  {
+			  className,
+			  component = 'div'
+		  } = _extendSxProp,
+		  other = _objectWithoutPropertiesLoose(_extendSxProp, _excluded$t);
     return /*#__PURE__*/jsx(BoxRoot, _extends({
       as: component,
       ref: ref,
@@ -9763,7 +12023,7 @@ function createBox(options = {}) {
   return Box;
 }
 
-const _excluded$r = ["variant"];
+const _excluded$s = ["variant"];
 function isEmpty$1(string) {
   return string.length === 0;
 }
@@ -9774,11 +12034,11 @@ function isEmpty$1(string) {
  * @param {object} props - the properties for which the classKey should be created.
  */
 function propsToClassKey(props) {
-  const {
-      variant
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$r);
-  let classKey = variant || '';
+	const {
+			variant
+		} = props,
+		other = _objectWithoutPropertiesLoose(props, _excluded$s);
+	let classKey = variant || '';
   Object.keys(other).sort().forEach(key => {
     if (key === 'color') {
       classKey += isEmpty$1(classKey) ? props[key] : capitalize(props[key]);
@@ -9789,7 +12049,7 @@ function propsToClassKey(props) {
   return classKey;
 }
 
-const _excluded$q = ["name", "slot", "skipVariantsResolver", "skipSx", "overridesResolver"];
+const _excluded$r = ["name", "slot", "skipVariantsResolver", "skipSx", "overridesResolver"];
 function isEmpty(obj) {
   return Object.keys(obj).length === 0;
 }
@@ -9877,14 +12137,14 @@ function createStyled(input = {}) {
   return (tag, inputOptions = {}) => {
     // Filter out the `sx` style function from the previous styled component to prevent unnecessary styles generated by the composite components.
     internal_processStyles(tag, styles => styles.filter(style => !(style != null && style.__mui_systemSx)));
-    const {
-        name: componentName,
-        slot: componentSlot,
-        skipVariantsResolver: inputSkipVariantsResolver,
-        skipSx: inputSkipSx,
-        overridesResolver
-      } = inputOptions,
-      options = _objectWithoutPropertiesLoose(inputOptions, _excluded$q);
+	  const {
+			  name: componentName,
+			  slot: componentSlot,
+			  skipVariantsResolver: inputSkipVariantsResolver,
+			  skipSx: inputSkipSx,
+			  overridesResolver
+		  } = inputOptions,
+		  options = _objectWithoutPropertiesLoose(inputOptions, _excluded$r);
 
     // if skipVariantsResolver option is defined, take the value, otherwise, true for root and false for other slots.
     const skipVariantsResolver = inputSkipVariantsResolver !== undefined ? inputSkipVariantsResolver : componentSlot && componentSlot !== 'Root' || false;
@@ -10264,7 +12524,7 @@ function lighten(color, coefficient) {
   return recomposeColor(color);
 }
 
-const _excluded$p = ["className", "component", "disableGutters", "fixed", "maxWidth", "classes"];
+const _excluded$q = ["className", "component", "disableGutters", "fixed", "maxWidth", "classes"];
 const defaultTheme$3 = createTheme$1();
 const defaultCreateStyledComponent = systemStyled('div', {
   name: 'MuiContainer',
@@ -10277,21 +12537,21 @@ const defaultCreateStyledComponent = systemStyled('div', {
   }
 });
 const useThemePropsDefault = inProps => useThemeProps$1({
-  props: inProps,
-  name: 'MuiContainer',
-  defaultTheme: defaultTheme$3
+	props: inProps,
+	name: 'MuiContainer',
+	defaultTheme: defaultTheme$3
 });
-const useUtilityClasses$f = (ownerState, componentName) => {
-  const getContainerUtilityClass = slot => {
-    return generateUtilityClass(componentName, slot);
-  };
-  const {
-    classes,
-    fixed,
-    disableGutters,
-    maxWidth
-  } = ownerState;
-  const slots = {
+const useUtilityClasses$g = (ownerState, componentName) => {
+	const getContainerUtilityClass = slot => {
+		return generateUtilityClass(componentName, slot);
+	};
+	const {
+		classes,
+		fixed,
+		disableGutters,
+		maxWidth
+	} = ownerState;
+	const slots = {
     root: ['root', maxWidth && `maxWidth${capitalize(String(maxWidth))}`, fixed && 'fixed', disableGutters && 'disableGutters']
   };
   return composeClasses(slots, getContainerUtilityClass, classes);
@@ -10352,24 +12612,24 @@ function createContainer(options = {}) {
     }
   }));
   const Container = /*#__PURE__*/React.forwardRef(function Container(inProps, ref) {
-    const props = useThemeProps(inProps);
-    const {
-        className,
-        component = 'div',
-        disableGutters = false,
-        fixed = false,
-        maxWidth = 'lg'
-      } = props,
-      other = _objectWithoutPropertiesLoose(props, _excluded$p);
-    const ownerState = _extends({}, props, {
-      component,
-      disableGutters,
-      fixed,
-      maxWidth
-    });
+	  const props = useThemeProps(inProps);
+	  const {
+			  className,
+			  component = 'div',
+			  disableGutters = false,
+			  fixed = false,
+			  maxWidth = 'lg'
+		  } = props,
+		  other = _objectWithoutPropertiesLoose(props, _excluded$q);
+	  const ownerState = _extends({}, props, {
+		  component,
+		  disableGutters,
+		  fixed,
+		  maxWidth
+	  });
 
     // @ts-ignore module augmentation fails if custom breakpoints are used
-    const classes = useUtilityClasses$f(ownerState, componentName);
+	  const classes = useUtilityClasses$g(ownerState, componentName);
     return (
       /*#__PURE__*/
       // @ts-ignore theme is injected by the styled util
@@ -10544,17 +12804,17 @@ const green = {
 };
 var green$1 = green;
 
-const _excluded$o = ["mode", "contrastThreshold", "tonalOffset"];
+const _excluded$p = ["mode", "contrastThreshold", "tonalOffset"];
 const light = {
-  // The colors used to style the text.
-  text: {
-    // The most important text.
-    primary: 'rgba(0, 0, 0, 0.87)',
-    // Secondary text.
-    secondary: 'rgba(0, 0, 0, 0.6)',
-    // Disabled text have even lower visual prominence.
-    disabled: 'rgba(0, 0, 0, 0.38)'
-  },
+	// The colors used to style the text.
+	text: {
+		// The most important text.
+		primary: 'rgba(0, 0, 0, 0.87)',
+		// Secondary text.
+		secondary: 'rgba(0, 0, 0, 0.6)',
+		// Disabled text have even lower visual prominence.
+		disabled: 'rgba(0, 0, 0, 0.38)'
+	},
   // The color used to divide different elements.
   divider: 'rgba(0, 0, 0, 0.12)',
   // The background colors used to style the surfaces.
@@ -10708,13 +12968,13 @@ function getDefaultWarning(mode = 'light') {
   };
 }
 function createPalette(palette) {
-  const {
-      mode = 'light',
-      contrastThreshold = 3,
-      tonalOffset = 0.2
-    } = palette,
-    other = _objectWithoutPropertiesLoose(palette, _excluded$o);
-  const primary = palette.primary || getDefaultPrimary(mode);
+	const {
+			mode = 'light',
+			contrastThreshold = 3,
+			tonalOffset = 0.2
+		} = palette,
+		other = _objectWithoutPropertiesLoose(palette, _excluded$p);
+	const primary = palette.primary || getDefaultPrimary(mode);
   const secondary = palette.secondary || getDefaultSecondary(mode);
   const error = palette.error || getDefaultError(mode);
   const info = palette.info || getDefaultInfo(mode);
@@ -10837,7 +13097,7 @@ const theme2 = createTheme({ palette: {
   return paletteOutput;
 }
 
-const _excluded$n = ["fontFamily", "fontSize", "fontWeightLight", "fontWeightRegular", "fontWeightMedium", "fontWeightBold", "htmlFontSize", "allVariants", "pxToRem"];
+const _excluded$o = ["fontFamily", "fontSize", "fontWeightLight", "fontWeightRegular", "fontWeightMedium", "fontWeightBold", "htmlFontSize", "allVariants", "pxToRem"];
 function round$1(value) {
   return Math.round(value * 1e5) / 1e5;
 }
@@ -10858,17 +13118,17 @@ function createTypography(palette, typography) {
       fontSize = 14,
       // px
       fontWeightLight = 300,
-      fontWeightRegular = 400,
-      fontWeightMedium = 500,
-      fontWeightBold = 700,
-      // Tell MUI what's the font-size on the html element.
-      // 16px is the default font-size used by browsers.
-      htmlFontSize = 16,
-      // Apply the CSS properties to all the variants.
-      allVariants,
-      pxToRem: pxToRem2
-    } = _ref,
-    other = _objectWithoutPropertiesLoose(_ref, _excluded$n);
+		fontWeightRegular = 400,
+		fontWeightMedium = 500,
+		fontWeightBold = 700,
+		// Tell MUI what's the font-size on the html element.
+		// 16px is the default font-size used by browsers.
+		htmlFontSize = 16,
+		// Apply the CSS properties to all the variants.
+		allVariants,
+		pxToRem: pxToRem2
+	} = _ref,
+	  other = _objectWithoutPropertiesLoose(_ref, _excluded$o);
   if (process.env.NODE_ENV !== 'production') {
     if (typeof fontSize !== 'number') {
       console.error('MUI: `fontSize` is required to be a number.');
@@ -10935,7 +13195,7 @@ function createShadow(...px) {
 const shadows = ['none', createShadow(0, 2, 1, -1, 0, 1, 1, 0, 0, 1, 3, 0), createShadow(0, 3, 1, -2, 0, 2, 2, 0, 0, 1, 5, 0), createShadow(0, 3, 3, -2, 0, 3, 4, 0, 0, 1, 8, 0), createShadow(0, 2, 4, -1, 0, 4, 5, 0, 0, 1, 10, 0), createShadow(0, 3, 5, -1, 0, 5, 8, 0, 0, 1, 14, 0), createShadow(0, 3, 5, -1, 0, 6, 10, 0, 0, 1, 18, 0), createShadow(0, 4, 5, -2, 0, 7, 10, 1, 0, 2, 16, 1), createShadow(0, 5, 5, -3, 0, 8, 10, 1, 0, 3, 14, 2), createShadow(0, 5, 6, -3, 0, 9, 12, 1, 0, 3, 16, 2), createShadow(0, 6, 6, -3, 0, 10, 14, 1, 0, 4, 18, 3), createShadow(0, 6, 7, -4, 0, 11, 15, 1, 0, 4, 20, 3), createShadow(0, 7, 8, -4, 0, 12, 17, 2, 0, 5, 22, 4), createShadow(0, 7, 8, -4, 0, 13, 19, 2, 0, 5, 24, 4), createShadow(0, 7, 9, -4, 0, 14, 21, 2, 0, 5, 26, 4), createShadow(0, 8, 9, -5, 0, 15, 22, 2, 0, 6, 28, 5), createShadow(0, 8, 10, -5, 0, 16, 24, 2, 0, 6, 30, 5), createShadow(0, 8, 11, -5, 0, 17, 26, 2, 0, 6, 32, 5), createShadow(0, 9, 11, -5, 0, 18, 28, 2, 0, 7, 34, 6), createShadow(0, 9, 12, -6, 0, 19, 29, 2, 0, 7, 36, 6), createShadow(0, 10, 13, -6, 0, 20, 31, 3, 0, 8, 38, 7), createShadow(0, 10, 13, -6, 0, 21, 33, 3, 0, 8, 40, 7), createShadow(0, 10, 14, -6, 0, 22, 35, 3, 0, 8, 42, 7), createShadow(0, 11, 14, -7, 0, 23, 36, 3, 0, 9, 44, 8), createShadow(0, 11, 15, -7, 0, 24, 38, 3, 0, 9, 46, 8)];
 var shadows$1 = shadows;
 
-const _excluded$m = ["duration", "easing", "delay"];
+const _excluded$n = ["duration", "easing", "delay"];
 // Follow https://material.google.com/motion/duration-easing.html#duration-easing-natural-easing-curves
 // to learn the context in which each easing should be used.
 const easing = {
@@ -10981,12 +13241,12 @@ function createTransitions(inputTransitions) {
   const mergedEasing = _extends({}, easing, inputTransitions.easing);
   const mergedDuration = _extends({}, duration, inputTransitions.duration);
   const create = (props = ['all'], options = {}) => {
-    const {
-        duration: durationOption = mergedDuration.standard,
-        easing: easingOption = mergedEasing.easeInOut,
-        delay = 0
-      } = options,
-      other = _objectWithoutPropertiesLoose(options, _excluded$m);
+	  const {
+			  duration: durationOption = mergedDuration.standard,
+			  easing: easingOption = mergedEasing.easeInOut,
+			  delay = 0
+		  } = options,
+		  other = _objectWithoutPropertiesLoose(options, _excluded$n);
     if (process.env.NODE_ENV !== 'production') {
       const isString = value => typeof value === 'string';
       // IE11 support, replace with Number.isNaN
@@ -11033,15 +13293,15 @@ const zIndex = {
 };
 var zIndex$1 = zIndex;
 
-const _excluded$l = ["breakpoints", "mixins", "spacing", "palette", "transitions", "typography", "shape"];
+const _excluded$m = ["breakpoints", "mixins", "spacing", "palette", "transitions", "typography", "shape"];
 function createTheme(options = {}, ...args) {
-  const {
-      mixins: mixinsInput = {},
-      palette: paletteInput = {},
-      transitions: transitionsInput = {},
-      typography: typographyInput = {}
-    } = options,
-    other = _objectWithoutPropertiesLoose(options, _excluded$l);
+	const {
+			mixins: mixinsInput = {},
+			palette: paletteInput = {},
+			transitions: transitionsInput = {},
+			typography: typographyInput = {}
+		} = options,
+		other = _objectWithoutPropertiesLoose(options, _excluded$m);
   if (options.vars) {
     throw new Error(process.env.NODE_ENV !== "production" ? `MUI: \`vars\` is a private field used for CSS variables support.
 Please use another name.` : formatMuiErrorMessage(18));
@@ -11140,28 +13400,29 @@ function useTheme() {
   const theme = useTheme$1(defaultTheme$2);
   if (process.env.NODE_ENV !== 'production') {
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    React.useDebugValue(theme);
+	  React.useDebugValue(theme);
   }
-  return theme[THEME_ID] || theme;
+	return theme[THEME_ID] || theme;
 }
 
 function getPaperUtilityClass(slot) {
-  return generateUtilityClass('MuiPaper', slot);
+	return generateUtilityClass('MuiPaper', slot);
 }
+
 generateUtilityClasses('MuiPaper', ['root', 'rounded', 'outlined', 'elevation', 'elevation0', 'elevation1', 'elevation2', 'elevation3', 'elevation4', 'elevation5', 'elevation6', 'elevation7', 'elevation8', 'elevation9', 'elevation10', 'elevation11', 'elevation12', 'elevation13', 'elevation14', 'elevation15', 'elevation16', 'elevation17', 'elevation18', 'elevation19', 'elevation20', 'elevation21', 'elevation22', 'elevation23', 'elevation24']);
 
-const _excluded$k = ["className", "component", "elevation", "square", "variant"];
-const useUtilityClasses$e = ownerState => {
-  const {
-    square,
-    elevation,
-    variant,
-    classes
-  } = ownerState;
-  const slots = {
-    root: ['root', variant, !square && 'rounded', variant === 'elevation' && `elevation${elevation}`]
-  };
-  return composeClasses(slots, getPaperUtilityClass, classes);
+const _excluded$l = ["className", "component", "elevation", "square", "variant"];
+const useUtilityClasses$f = ownerState => {
+	const {
+		square,
+		elevation,
+		variant,
+		classes
+	} = ownerState;
+	const slots = {
+		root: ['root', variant, !square && 'rounded', variant === 'elevation' && `elevation${elevation}`]
+	};
+	return composeClasses(slots, getPaperUtilityClass, classes);
 };
 const PaperRoot = styled$1('div', {
   name: 'MuiPaper',
@@ -11195,29 +13456,29 @@ const PaperRoot = styled$1('div', {
 });
 const Paper = /*#__PURE__*/React.forwardRef(function Paper(inProps, ref) {
   const props = useThemeProps({
-    props: inProps,
-    name: 'MuiPaper'
+	  props: inProps,
+	  name: 'MuiPaper'
   });
-  const {
-      className,
-      component = 'div',
-      elevation = 1,
-      square = false,
-      variant = 'elevation'
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$k);
-  const ownerState = _extends({}, props, {
-    component,
-    elevation,
-    square,
-    variant
-  });
-  const classes = useUtilityClasses$e(ownerState);
+	const {
+			className,
+			component = 'div',
+			elevation = 1,
+			square = false,
+			variant = 'elevation'
+		} = props,
+		other = _objectWithoutPropertiesLoose(props, _excluded$l);
+	const ownerState = _extends({}, props, {
+		component,
+		elevation,
+		square,
+		variant
+	});
+	const classes = useUtilityClasses$f(ownerState);
   if (process.env.NODE_ENV !== 'production') {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     const theme = useTheme();
     if (theme.shadows[elevation] === undefined) {
-      console.error([`The elevation provided <Paper elevation={${elevation}}> is not available in the theme.`, `Please make sure that \`theme.shadows[${elevation}]\` is defined.`].join('\n'));
+		console.error([`The elevation provided <Paper elevation={${elevation}}> is not available in the theme.`, `Please make sure that \`theme.shadows[${elevation}]\` is defined.`].join('\n'));
     }
   }
   return /*#__PURE__*/jsx(PaperRoot, _extends({
@@ -11279,40 +13540,41 @@ process.env.NODE_ENV !== "production" ? Paper.propTypes /* remove-proptypes */ =
    */
   variant: PropTypes /* @typescript-to-proptypes-ignore */.oneOfType([PropTypes.oneOf(['elevation', 'outlined']), PropTypes.string])
 } : void 0;
-var PaperBase = Paper;
+var Paper$1 = Paper;
 
 function getAppBarUtilityClass(slot) {
-  return generateUtilityClass('MuiAppBar', slot);
+	return generateUtilityClass('MuiAppBar', slot);
 }
+
 generateUtilityClasses('MuiAppBar', ['root', 'positionFixed', 'positionAbsolute', 'positionSticky', 'positionStatic', 'positionRelative', 'colorDefault', 'colorPrimary', 'colorSecondary', 'colorInherit', 'colorTransparent']);
 
-const _excluded$j = ["className", "color", "enableColorOnDark", "position"];
-const useUtilityClasses$d = ownerState => {
-  const {
-    color,
-    position,
-    classes
-  } = ownerState;
-  const slots = {
-    root: ['root', `color${capitalize(color)}`, `position${capitalize(position)}`]
-  };
-  return composeClasses(slots, getAppBarUtilityClass, classes);
+const _excluded$k = ["className", "color", "enableColorOnDark", "position"];
+const useUtilityClasses$e = ownerState => {
+	const {
+		color,
+		position,
+		classes
+	} = ownerState;
+	const slots = {
+		root: ['root', `color${capitalize(color)}`, `position${capitalize(position)}`]
+	};
+	return composeClasses(slots, getAppBarUtilityClass, classes);
 };
 
 // var2 is the fallback.
 // Ex. var1: 'var(--a)', var2: 'var(--b)'; return: 'var(--a, var(--b))'
 const joinVars = (var1, var2) => var1 ? `${var1 == null ? void 0 : var1.replace(')', '')}, ${var2})` : var2;
-const AppBarRoot = styled$1(PaperBase, {
-  name: 'MuiAppBar',
-  slot: 'Root',
-  overridesResolver: (props, styles) => {
-    const {
-      ownerState
-    } = props;
-    return [styles.root, styles[`position${capitalize(ownerState.position)}`], styles[`color${capitalize(ownerState.color)}`]];
-  }
+const AppBarRoot = styled$1(Paper$1, {
+	name: 'MuiAppBar',
+	slot: 'Root',
+	overridesResolver: (props, styles) => {
+		const {
+			ownerState
+		} = props;
+		return [styles.root, styles[`position${capitalize(ownerState.position)}`], styles[`color${capitalize(ownerState.color)}`]];
+	}
 })(({
-  theme,
+		theme,
   ownerState
 }) => {
   const backgroundColorDefault = theme.palette.mode === 'light' ? theme.palette.grey[100] : theme.palette.grey[900];
@@ -11382,23 +13644,23 @@ const AppBarRoot = styled$1(PaperBase, {
   }));
 });
 const AppBar = /*#__PURE__*/React.forwardRef(function AppBar(inProps, ref) {
-  const props = useThemeProps({
-    props: inProps,
-    name: 'MuiAppBar'
-  });
-  const {
-      className,
-      color = 'primary',
-      enableColorOnDark = false,
-      position = 'fixed'
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$j);
-  const ownerState = _extends({}, props, {
-    color,
-    position,
-    enableColorOnDark
-  });
-  const classes = useUtilityClasses$d(ownerState);
+	const props = useThemeProps({
+		props: inProps,
+		name: 'MuiAppBar'
+	});
+	const {
+			className,
+			color = 'primary',
+			enableColorOnDark = false,
+			position = 'fixed'
+		} = props,
+		other = _objectWithoutPropertiesLoose(props, _excluded$k);
+	const ownerState = _extends({}, props, {
+		color,
+		position,
+		enableColorOnDark
+	});
+	const classes = useUtilityClasses$e(ownerState);
   return /*#__PURE__*/jsx(AppBarRoot, _extends({
     square: true,
     component: "header",
@@ -11480,21 +13742,22 @@ process.env.NODE_ENV !== "production" ? Box.propTypes /* remove-proptypes */ = {
 var Box$1 = Box;
 
 function getToolbarUtilityClass(slot) {
-  return generateUtilityClass('MuiToolbar', slot);
+	return generateUtilityClass('MuiToolbar', slot);
 }
+
 generateUtilityClasses('MuiToolbar', ['root', 'gutters', 'regular', 'dense']);
 
-const _excluded$i = ["className", "component", "disableGutters", "variant"];
-const useUtilityClasses$c = ownerState => {
-  const {
-    classes,
-    disableGutters,
-    variant
-  } = ownerState;
-  const slots = {
-    root: ['root', !disableGutters && 'gutters', variant]
-  };
-  return composeClasses(slots, getToolbarUtilityClass, classes);
+const _excluded$j = ["className", "component", "disableGutters", "variant"];
+const useUtilityClasses$d = ownerState => {
+	const {
+		classes,
+		disableGutters,
+		variant
+	} = ownerState;
+	const slots = {
+		root: ['root', !disableGutters && 'gutters', variant]
+	};
+	return composeClasses(slots, getToolbarUtilityClass, classes);
 };
 const ToolbarRoot = styled$1('div', {
   name: 'MuiToolbar',
@@ -11526,23 +13789,23 @@ const ToolbarRoot = styled$1('div', {
   ownerState
 }) => ownerState.variant === 'regular' && theme.mixins.toolbar);
 const Toolbar = /*#__PURE__*/React.forwardRef(function Toolbar(inProps, ref) {
-  const props = useThemeProps({
-    props: inProps,
-    name: 'MuiToolbar'
-  });
-  const {
-      className,
-      component = 'div',
-      disableGutters = false,
-      variant = 'regular'
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$i);
-  const ownerState = _extends({}, props, {
-    component,
-    disableGutters,
-    variant
-  });
-  const classes = useUtilityClasses$c(ownerState);
+	const props = useThemeProps({
+		props: inProps,
+		name: 'MuiToolbar'
+	});
+	const {
+			className,
+			component = 'div',
+			disableGutters = false,
+			variant = 'regular'
+		} = props,
+		other = _objectWithoutPropertiesLoose(props, _excluded$j);
+	const ownerState = _extends({}, props, {
+		component,
+		disableGutters,
+		variant
+	});
+	const classes = useUtilityClasses$d(ownerState);
   return /*#__PURE__*/jsx(ToolbarRoot, _extends({
     as: component,
     className: clsx(classes.root, className),
@@ -12659,12 +14922,12 @@ process.env.NODE_ENV !== "production" ? Ripple.propTypes = {
 const touchRippleClasses = generateUtilityClasses('MuiTouchRipple', ['root', 'ripple', 'rippleVisible', 'ripplePulsate', 'child', 'childLeaving', 'childPulsate']);
 var touchRippleClasses$1 = touchRippleClasses;
 
-const _excluded$h = ["center", "classes", "className"];
+const _excluded$i = ["center", "classes", "className"];
 let _ = t => t,
-  _t,
-  _t2,
-  _t3,
-  _t4;
+	_t,
+	_t2,
+	_t3,
+	_t4;
 const DURATION = 550;
 const DELAY_RIPPLE = 80;
 const enterKeyframe = keyframes(_t || (_t = _`
@@ -12779,17 +15042,17 @@ const TouchRippleRipple = styled$1(Ripple, {
  * TODO v5: Make private
  */
 const TouchRipple = /*#__PURE__*/React.forwardRef(function TouchRipple(inProps, ref) {
-  const props = useThemeProps({
-    props: inProps,
-    name: 'MuiTouchRipple'
-  });
-  const {
-      center: centerProp = false,
-      classes = {},
-      className
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$h);
-  const [ripples, setRipples] = React.useState([]);
+	const props = useThemeProps({
+		props: inProps,
+		name: 'MuiTouchRipple'
+	});
+	const {
+			center: centerProp = false,
+			classes = {},
+			className
+		} = props,
+		other = _objectWithoutPropertiesLoose(props, _excluded$i);
+	const [ripples, setRipples] = React.useState([]);
   const nextKey = React.useRef(0);
   const rippleCallback = React.useRef(null);
   React.useEffect(() => {
@@ -12986,23 +15249,24 @@ process.env.NODE_ENV !== "production" ? TouchRipple.propTypes = {
 var TouchRipple$1 = TouchRipple;
 
 function getButtonBaseUtilityClass(slot) {
-  return generateUtilityClass('MuiButtonBase', slot);
+	return generateUtilityClass('MuiButtonBase', slot);
 }
+
 const buttonBaseClasses = generateUtilityClasses('MuiButtonBase', ['root', 'disabled', 'focusVisible']);
 var buttonBaseClasses$1 = buttonBaseClasses;
 
-const _excluded$g = ["action", "centerRipple", "children", "className", "component", "disabled", "disableRipple", "disableTouchRipple", "focusRipple", "focusVisibleClassName", "LinkComponent", "onBlur", "onClick", "onContextMenu", "onDragLeave", "onFocus", "onFocusVisible", "onKeyDown", "onKeyUp", "onMouseDown", "onMouseLeave", "onMouseUp", "onTouchEnd", "onTouchMove", "onTouchStart", "tabIndex", "TouchRippleProps", "touchRippleRef", "type"];
-const useUtilityClasses$b = ownerState => {
-  const {
-    disabled,
-    focusVisible,
-    focusVisibleClassName,
-    classes
-  } = ownerState;
-  const slots = {
-    root: ['root', disabled && 'disabled', focusVisible && 'focusVisible']
-  };
-  const composedClasses = composeClasses(slots, getButtonBaseUtilityClass, classes);
+const _excluded$h = ["action", "centerRipple", "children", "className", "component", "disabled", "disableRipple", "disableTouchRipple", "focusRipple", "focusVisibleClassName", "LinkComponent", "onBlur", "onClick", "onContextMenu", "onDragLeave", "onFocus", "onFocusVisible", "onKeyDown", "onKeyUp", "onMouseDown", "onMouseLeave", "onMouseUp", "onTouchEnd", "onTouchMove", "onTouchStart", "tabIndex", "TouchRippleProps", "touchRippleRef", "type"];
+const useUtilityClasses$c = ownerState => {
+	const {
+		disabled,
+		focusVisible,
+		focusVisibleClassName,
+		classes
+	} = ownerState;
+	const slots = {
+		root: ['root', disabled && 'disabled', focusVisible && 'focusVisible']
+	};
+	const composedClasses = composeClasses(slots, getButtonBaseUtilityClass, classes);
   if (focusVisible && focusVisibleClassName) {
     composedClasses.root += ` ${focusVisibleClassName}`;
   }
@@ -13083,18 +15347,18 @@ const ButtonBase = /*#__PURE__*/React.forwardRef(function ButtonBase(inProps, re
       onKeyDown,
       onKeyUp,
       onMouseDown,
-      onMouseLeave,
-      onMouseUp,
-      onTouchEnd,
-      onTouchMove,
-      onTouchStart,
-      tabIndex = 0,
-      TouchRippleProps,
-      touchRippleRef,
-      type
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$g);
-  const buttonRef = React.useRef(null);
+		  onMouseLeave,
+		  onMouseUp,
+		  onTouchEnd,
+		  onTouchMove,
+		  onTouchStart,
+		  tabIndex = 0,
+		  TouchRippleProps,
+		  touchRippleRef,
+		  type
+	  } = props,
+	  other = _objectWithoutPropertiesLoose(props, _excluded$h);
+	const buttonRef = React.useRef(null);
   const rippleRef = React.useRef(null);
   const handleRippleRef = useForkRef(rippleRef, touchRippleRef);
   const {
@@ -13250,17 +15514,17 @@ const ButtonBase = /*#__PURE__*/React.forwardRef(function ButtonBase(inProps, re
       }
     }, [enableTouchRipple]);
   }
-  const ownerState = _extends({}, props, {
-    centerRipple,
-    component,
-    disabled,
-    disableRipple,
-    disableTouchRipple,
-    focusRipple,
-    tabIndex,
-    focusVisible
-  });
-  const classes = useUtilityClasses$b(ownerState);
+	const ownerState = _extends({}, props, {
+		centerRipple,
+		component,
+		disabled,
+		disableRipple,
+		disableTouchRipple,
+		focusRipple,
+		tabIndex,
+		focusVisible
+	});
+	const classes = useUtilityClasses$c(ownerState);
   return /*#__PURE__*/jsxs(ButtonBaseRoot, _extends({
     as: ComponentProp,
     className: clsx(classes.root, className),
@@ -13452,23 +15716,24 @@ process.env.NODE_ENV !== "production" ? ButtonBase.propTypes /* remove-proptypes
 var ButtonBase$1 = ButtonBase;
 
 function getIconButtonUtilityClass(slot) {
-  return generateUtilityClass('MuiIconButton', slot);
+	return generateUtilityClass('MuiIconButton', slot);
 }
+
 const iconButtonClasses = generateUtilityClasses('MuiIconButton', ['root', 'disabled', 'colorInherit', 'colorPrimary', 'colorSecondary', 'colorError', 'colorInfo', 'colorSuccess', 'colorWarning', 'edgeStart', 'edgeEnd', 'sizeSmall', 'sizeMedium', 'sizeLarge']);
 var iconButtonClasses$1 = iconButtonClasses;
 
-const _excluded$f = ["edge", "children", "className", "color", "disabled", "disableFocusRipple", "size"];
-const useUtilityClasses$a = ownerState => {
-  const {
-    classes,
-    disabled,
-    color,
-    edge,
-    size
-  } = ownerState;
-  const slots = {
-    root: ['root', disabled && 'disabled', color !== 'default' && `color${capitalize(color)}`, edge && `edge${capitalize(edge)}`, `size${capitalize(size)}`]
-  };
+const _excluded$g = ["edge", "children", "className", "color", "disabled", "disableFocusRipple", "size"];
+const useUtilityClasses$b = ownerState => {
+	const {
+		classes,
+		disabled,
+		color,
+		edge,
+		size
+	} = ownerState;
+	const slots = {
+		root: ['root', disabled && 'disabled', color !== 'default' && `color${capitalize(color)}`, edge && `edge${capitalize(edge)}`, `size${capitalize(size)}`]
+	};
   return composeClasses(slots, getIconButtonUtilityClass, classes);
 };
 const IconButtonRoot = styled$1(ButtonBase$1, {
@@ -13549,24 +15814,24 @@ const IconButton = /*#__PURE__*/React.forwardRef(function IconButton(inProps, re
     props: inProps,
     name: 'MuiIconButton'
   });
-  const {
-      edge = false,
-      children,
-      className,
-      color = 'default',
-      disabled = false,
-      disableFocusRipple = false,
-      size = 'medium'
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$f);
-  const ownerState = _extends({}, props, {
-    edge,
-    color,
-    disabled,
-    disableFocusRipple,
-    size
-  });
-  const classes = useUtilityClasses$a(ownerState);
+	const {
+			edge = false,
+			children,
+			className,
+			color = 'default',
+			disabled = false,
+			disableFocusRipple = false,
+			size = 'medium'
+		} = props,
+		other = _objectWithoutPropertiesLoose(props, _excluded$g);
+	const ownerState = _extends({}, props, {
+		edge,
+		color,
+		disabled,
+		disableFocusRipple,
+		size
+	});
+	const classes = useUtilityClasses$b(ownerState);
   return /*#__PURE__*/jsx(IconButtonRoot, _extends({
     className: clsx(classes.root, className),
     centerRipple: true,
@@ -13648,22 +15913,23 @@ process.env.NODE_ENV !== "production" ? IconButton.propTypes /* remove-proptypes
 var IconButton$1 = IconButton;
 
 function getTypographyUtilityClass(slot) {
-  return generateUtilityClass('MuiTypography', slot);
+	return generateUtilityClass('MuiTypography', slot);
 }
+
 generateUtilityClasses('MuiTypography', ['root', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'subtitle1', 'subtitle2', 'body1', 'body2', 'inherit', 'button', 'caption', 'overline', 'alignLeft', 'alignRight', 'alignCenter', 'alignJustify', 'noWrap', 'gutterBottom', 'paragraph']);
 
-const _excluded$e = ["align", "className", "component", "gutterBottom", "noWrap", "paragraph", "variant", "variantMapping"];
-const useUtilityClasses$9 = ownerState => {
-  const {
-    align,
-    gutterBottom,
-    noWrap,
-    paragraph,
-    variant,
-    classes
-  } = ownerState;
-  const slots = {
-    root: ['root', variant, ownerState.align !== 'inherit' && `align${capitalize(align)}`, gutterBottom && 'gutterBottom', noWrap && 'noWrap', paragraph && 'paragraph']
+const _excluded$f = ["align", "className", "component", "gutterBottom", "noWrap", "paragraph", "variant", "variantMapping"];
+const useUtilityClasses$a = ownerState => {
+	const {
+		align,
+		gutterBottom,
+		noWrap,
+		paragraph,
+		variant,
+		classes
+	} = ownerState;
+	const slots = {
+		root: ['root', variant, ownerState.align !== 'inherit' && `align${capitalize(align)}`, gutterBottom && 'gutterBottom', noWrap && 'noWrap', paragraph && 'paragraph']
   };
   return composeClasses(slots, getTypographyUtilityClass, classes);
 };
@@ -13726,30 +15992,30 @@ const Typography = /*#__PURE__*/React.forwardRef(function Typography(inProps, re
   const props = extendSxProp(_extends({}, themeProps, {
     color
   }));
-  const {
-      align = 'inherit',
-      className,
-      component,
-      gutterBottom = false,
-      noWrap = false,
-      paragraph = false,
-      variant = 'body1',
-      variantMapping = defaultVariantMapping
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$e);
-  const ownerState = _extends({}, props, {
-    align,
-    color,
-    className,
-    component,
-    gutterBottom,
-    noWrap,
-    paragraph,
-    variant,
-    variantMapping
+	const {
+			align = 'inherit',
+			className,
+			component,
+			gutterBottom = false,
+			noWrap = false,
+			paragraph = false,
+			variant = 'body1',
+			variantMapping = defaultVariantMapping
+		} = props,
+		other = _objectWithoutPropertiesLoose(props, _excluded$f);
+	const ownerState = _extends({}, props, {
+		align,
+		color,
+		className,
+		component,
+		gutterBottom,
+		noWrap,
+		paragraph,
+		variant,
+		variantMapping
   });
-  const Component = component || (paragraph ? 'p' : variantMapping[variant] || defaultVariantMapping[variant]) || 'span';
-  const classes = useUtilityClasses$9(ownerState);
+	const Component = component || (paragraph ? 'p' : variantMapping[variant] || defaultVariantMapping[variant]) || 'span';
+	const classes = useUtilityClasses$a(ownerState);
   return /*#__PURE__*/jsx(TypographyRoot, _extends({
     as: Component,
     ref: ref,
@@ -13839,27 +16105,28 @@ var Typography$1 = Typography;
  */
 const ListContext = /*#__PURE__*/React.createContext({});
 if (process.env.NODE_ENV !== 'production') {
-  ListContext.displayName = 'ListContext';
+	ListContext.displayName = 'ListContext';
 }
 var ListContext$1 = ListContext;
 
 function getListUtilityClass(slot) {
-  return generateUtilityClass('MuiList', slot);
+	return generateUtilityClass('MuiList', slot);
 }
+
 generateUtilityClasses('MuiList', ['root', 'padding', 'dense', 'subheader']);
 
-const _excluded$d = ["children", "className", "component", "dense", "disablePadding", "subheader"];
-const useUtilityClasses$8 = ownerState => {
-  const {
-    classes,
-    disablePadding,
-    dense,
-    subheader
-  } = ownerState;
-  const slots = {
-    root: ['root', !disablePadding && 'padding', dense && 'dense', subheader && 'subheader']
-  };
-  return composeClasses(slots, getListUtilityClass, classes);
+const _excluded$e = ["children", "className", "component", "dense", "disablePadding", "subheader"];
+const useUtilityClasses$9 = ownerState => {
+	const {
+		classes,
+		disablePadding,
+		dense,
+		subheader
+	} = ownerState;
+	const slots = {
+		root: ['root', !disablePadding && 'padding', dense && 'dense', subheader && 'subheader']
+	};
+	return composeClasses(slots, getListUtilityClass, classes);
 };
 const ListRoot = styled$1('ul', {
   name: 'MuiList',
@@ -13873,39 +16140,39 @@ const ListRoot = styled$1('ul', {
 })(({
   ownerState
 }) => _extends({
-  listStyle: 'none',
-  margin: 0,
-  padding: 0,
-  position: 'relative'
+	listStyle: 'none',
+	margin: 0,
+	padding: 0,
+	position: 'relative'
 }, !ownerState.disablePadding && {
-  paddingTop: 8,
-  paddingBottom: 8
+	paddingTop: 8,
+	paddingBottom: 8
 }, ownerState.subheader && {
-  paddingTop: 0
+	paddingTop: 0
 }));
-const List = /*#__PURE__*/React.forwardRef(function List(inProps, ref) {
-  const props = useThemeProps({
-    props: inProps,
-    name: 'MuiList'
-  });
-  const {
-      children,
-      className,
-      component = 'ul',
-      dense = false,
-      disablePadding = false,
-      subheader
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$d);
-  const context = React.useMemo(() => ({
-    dense
-  }), [dense]);
-  const ownerState = _extends({}, props, {
-    component,
-    dense,
-    disablePadding
-  });
-  const classes = useUtilityClasses$8(ownerState);
+const List$1 = /*#__PURE__*/React.forwardRef(function List(inProps, ref) {
+	const props = useThemeProps({
+		props: inProps,
+		name: 'MuiList'
+	});
+	const {
+			children,
+			className,
+			component = 'ul',
+			dense = false,
+			disablePadding = false,
+			subheader
+		} = props,
+		other = _objectWithoutPropertiesLoose(props, _excluded$e);
+	const context = React.useMemo(() => ({
+		dense
+	}), [dense]);
+	const ownerState = _extends({}, props, {
+		component,
+		dense,
+		disablePadding
+	});
+	const classes = useUtilityClasses$9(ownerState);
   return /*#__PURE__*/jsx(ListContext$1.Provider, {
     value: context,
     children: /*#__PURE__*/jsxs(ListRoot, _extends({
@@ -13918,17 +16185,17 @@ const List = /*#__PURE__*/React.forwardRef(function List(inProps, ref) {
     }))
   });
 });
-process.env.NODE_ENV !== "production" ? List.propTypes /* remove-proptypes */ = {
-  // ----------------------------- Warning --------------------------------
-  // | These PropTypes are generated from the TypeScript type definitions |
-  // |     To update them edit the d.ts file and run "yarn proptypes"     |
-  // ----------------------------------------------------------------------
-  /**
-   * The content of the component.
-   */
-  children: PropTypes.node,
-  /**
-   * Override or extend the styles applied to the component.
+process.env.NODE_ENV !== "production" ? List$1.propTypes /* remove-proptypes */ = {
+	// ----------------------------- Warning --------------------------------
+	// | These PropTypes are generated from the TypeScript type definitions |
+	// |     To update them edit the d.ts file and run "yarn proptypes"     |
+	// ----------------------------------------------------------------------
+	/**
+	 * The content of the component.
+	 */
+	children: PropTypes.node,
+	/**
+	 * Override or extend the styles applied to the component.
    */
   classes: PropTypes.object,
   /**
@@ -13961,9 +16228,9 @@ process.env.NODE_ENV !== "production" ? List.propTypes /* remove-proptypes */ = 
    */
   sx: PropTypes.oneOfType([PropTypes.arrayOf(PropTypes.oneOfType([PropTypes.func, PropTypes.object, PropTypes.bool])), PropTypes.func, PropTypes.object])
 } : void 0;
-var List$1 = List;
+var List$2 = List$1;
 
-const _excluded$c = ["actions", "autoFocus", "autoFocusItem", "children", "className", "disabledItemsFocusable", "disableListWrap", "onKeyDown", "variant"];
+const _excluded$d = ["actions", "autoFocus", "autoFocusItem", "children", "className", "disabledItemsFocusable", "disableListWrap", "onKeyDown", "variant"];
 function nextItem(list, item, disableListWrap) {
   if (list === item) {
     return list.firstChild;
@@ -14035,18 +16302,18 @@ const MenuList = /*#__PURE__*/React.forwardRef(function MenuList(props, ref) {
   const {
       // private
       // eslint-disable-next-line react/prop-types
-      actions,
-      autoFocus = false,
-      autoFocusItem = false,
-      children,
-      className,
-      disabledItemsFocusable = false,
-      disableListWrap = false,
-      onKeyDown,
-      variant = 'selectedMenu'
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$c);
-  const listRef = React.useRef(null);
+		  actions,
+		  autoFocus = false,
+		  autoFocusItem = false,
+		  children,
+		  className,
+		  disabledItemsFocusable = false,
+		  disableListWrap = false,
+		  onKeyDown,
+		  variant = 'selectedMenu'
+	  } = props,
+	  other = _objectWithoutPropertiesLoose(props, _excluded$d);
+	const listRef = React.useRef(null);
   const textCriteriaRef = React.useRef({
     keys: [],
     repeating: true,
@@ -14176,15 +16443,15 @@ const MenuList = /*#__PURE__*/React.forwardRef(function MenuList(props, ref) {
     }
     return child;
   });
-  return /*#__PURE__*/jsx(List$1, _extends({
-    role: "menu",
-    ref: handleRef,
-    className: className,
-    onKeyDown: handleKeyDown,
-    tabIndex: autoFocus ? 0 : -1
-  }, other, {
-    children: items
-  }));
+	return /*#__PURE__*/jsx(List$2, _extends({
+		role: "menu",
+		ref: handleRef,
+		className: className,
+		onKeyDown: handleKeyDown,
+		tabIndex: autoFocus ? 0 : -1
+	}, other, {
+		children: items
+	}));
 });
 process.env.NODE_ENV !== "production" ? MenuList.propTypes /* remove-proptypes */ = {
   // ----------------------------- Warning --------------------------------
@@ -14248,7 +16515,7 @@ function getTransitionProps(props, options) {
   };
 }
 
-const _excluded$b = ["addEndListener", "appear", "children", "easing", "in", "onEnter", "onEntered", "onEntering", "onExit", "onExited", "onExiting", "style", "timeout", "TransitionComponent"];
+const _excluded$c = ["addEndListener", "appear", "children", "easing", "in", "onEnter", "onEntered", "onEntering", "onExit", "onExited", "onExiting", "style", "timeout", "TransitionComponent"];
 function getScale(value) {
   return `scale(${value}, ${value ** 2})`;
 }
@@ -14282,18 +16549,18 @@ const Grow = /*#__PURE__*/React.forwardRef(function Grow(props, ref) {
       easing,
       in: inProp,
       onEnter,
-      onEntered,
-      onEntering,
-      onExit,
-      onExited,
-      onExiting,
-      style,
-      timeout = 'auto',
-      // eslint-disable-next-line react/prop-types
-      TransitionComponent = Transition$1
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$b);
-  const timer = React.useRef();
+		  onEntered,
+		  onEntering,
+		  onExit,
+		  onExited,
+		  onExiting,
+		  style,
+		  timeout = 'auto',
+		  // eslint-disable-next-line react/prop-types
+		  TransitionComponent = Transition$1
+	  } = props,
+	  other = _objectWithoutPropertiesLoose(props, _excluded$c);
+	const timer = React.useRef();
   const autoTimeout = React.useRef();
   const theme = useTheme();
   const nodeRef = React.useRef(null);
@@ -14496,14 +16763,14 @@ process.env.NODE_ENV !== "production" ? Grow.propTypes /* remove-proptypes */ = 
 Grow.muiSupportAuto = true;
 var Grow$1 = Grow;
 
-const _excluded$a = ["addEndListener", "appear", "children", "easing", "in", "onEnter", "onEntered", "onEntering", "onExit", "onExited", "onExiting", "style", "timeout", "TransitionComponent"];
+const _excluded$b = ["addEndListener", "appear", "children", "easing", "in", "onEnter", "onEntered", "onEntering", "onExit", "onExited", "onExiting", "style", "timeout", "TransitionComponent"];
 const styles = {
-  entering: {
-    opacity: 1
-  },
-  entered: {
-    opacity: 1
-  }
+	entering: {
+		opacity: 1
+	},
+	entered: {
+		opacity: 1
+	}
 };
 
 /**
@@ -14523,18 +16790,18 @@ const Fade = /*#__PURE__*/React.forwardRef(function Fade(props, ref) {
       easing,
       in: inProp,
       onEnter,
-      onEntered,
-      onEntering,
-      onExit,
-      onExited,
-      onExiting,
-      style,
-      timeout = defaultTimeout,
-      // eslint-disable-next-line react/prop-types
-      TransitionComponent = Transition$1
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$a);
-  const nodeRef = React.useRef(null);
+		  onEntered,
+		  onEntering,
+		  onExit,
+		  onExited,
+		  onExiting,
+		  style,
+		  timeout = defaultTimeout,
+		  // eslint-disable-next-line react/prop-types
+		  TransitionComponent = Transition$1
+	  } = props,
+	  other = _objectWithoutPropertiesLoose(props, _excluded$b);
+	const nodeRef = React.useRef(null);
   const handleRef = useForkRef(nodeRef, children.ref, ref);
   const normalizedTransitionCallback = callback => maybeIsAppearing => {
     if (callback) {
@@ -14684,26 +16951,27 @@ process.env.NODE_ENV !== "production" ? Fade.propTypes /* remove-proptypes */ = 
   timeout: PropTypes.oneOfType([PropTypes.number, PropTypes.shape({
     appear: PropTypes.number,
     enter: PropTypes.number,
-    exit: PropTypes.number
+	  exit: PropTypes.number
   })])
 } : void 0;
 var Fade$1 = Fade;
 
 function getBackdropUtilityClass(slot) {
-  return generateUtilityClass('MuiBackdrop', slot);
+	return generateUtilityClass('MuiBackdrop', slot);
 }
+
 generateUtilityClasses('MuiBackdrop', ['root', 'invisible']);
 
-const _excluded$9 = ["children", "className", "component", "components", "componentsProps", "invisible", "open", "slotProps", "slots", "TransitionComponent", "transitionDuration"];
-const useUtilityClasses$7 = ownerState => {
-  const {
-    classes,
-    invisible
-  } = ownerState;
-  const slots = {
-    root: ['root', invisible && 'invisible']
-  };
-  return composeClasses(slots, getBackdropUtilityClass, classes);
+const _excluded$a = ["children", "className", "component", "components", "componentsProps", "invisible", "open", "slotProps", "slots", "TransitionComponent", "transitionDuration"];
+const useUtilityClasses$8 = ownerState => {
+	const {
+		classes,
+		invisible
+	} = ownerState;
+	const slots = {
+		root: ['root', invisible && 'invisible']
+	};
+	return composeClasses(slots, getBackdropUtilityClass, classes);
 };
 const BackdropRoot = styled$1('div', {
   name: 'MuiBackdrop',
@@ -14739,23 +17007,23 @@ const Backdrop = /*#__PURE__*/React.forwardRef(function Backdrop(inProps, ref) {
   const {
       children,
       className,
-      component = 'div',
-      components = {},
-      componentsProps = {},
-      invisible = false,
-      open,
-      slotProps = {},
-      slots = {},
-      TransitionComponent = Fade$1,
-      transitionDuration
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$9);
-  const ownerState = _extends({}, props, {
-    component,
-    invisible
-  });
-  const classes = useUtilityClasses$7(ownerState);
-  const rootSlotProps = (_slotProps$root = slotProps.root) != null ? _slotProps$root : componentsProps.root;
+		  component = 'div',
+		  components = {},
+		  componentsProps = {},
+		  invisible = false,
+		  open,
+		  slotProps = {},
+		  slots = {},
+		  TransitionComponent = Fade$1,
+		  transitionDuration
+	  } = props,
+	  other = _objectWithoutPropertiesLoose(props, _excluded$a);
+	const ownerState = _extends({}, props, {
+		component,
+		invisible
+	});
+	const classes = useUtilityClasses$8(ownerState);
+	const rootSlotProps = (_slotProps$root = slotProps.root) != null ? _slotProps$root : componentsProps.root;
   return /*#__PURE__*/jsx(TransitionComponent, _extends({
     in: open,
     timeout: transitionDuration
@@ -14870,16 +17138,16 @@ process.env.NODE_ENV !== "production" ? Backdrop.propTypes /* remove-proptypes *
 } : void 0;
 var Backdrop$1 = Backdrop;
 
-const _excluded$8 = ["BackdropComponent", "BackdropProps", "classes", "className", "closeAfterTransition", "children", "container", "component", "components", "componentsProps", "disableAutoFocus", "disableEnforceFocus", "disableEscapeKeyDown", "disablePortal", "disableRestoreFocus", "disableScrollLock", "hideBackdrop", "keepMounted", "onBackdropClick", "onClose", "open", "slotProps", "slots", "theme"];
+const _excluded$9 = ["BackdropComponent", "BackdropProps", "classes", "className", "closeAfterTransition", "children", "container", "component", "components", "componentsProps", "disableAutoFocus", "disableEnforceFocus", "disableEscapeKeyDown", "disablePortal", "disableRestoreFocus", "disableScrollLock", "hideBackdrop", "keepMounted", "onBackdropClick", "onClose", "open", "slotProps", "slots", "theme"];
 const ModalRoot = styled$1('div', {
-  name: 'MuiModal',
-  slot: 'Root',
-  overridesResolver: (props, styles) => {
-    const {
-      ownerState
-    } = props;
-    return [styles.root, !ownerState.open && ownerState.exited && styles.hidden];
-  }
+	name: 'MuiModal',
+	slot: 'Root',
+	overridesResolver: (props, styles) => {
+		const {
+			ownerState
+		} = props;
+		return [styles.root, !ownerState.open && ownerState.exited && styles.hidden];
+	}
 })(({
   theme,
   ownerState
@@ -14939,18 +17207,18 @@ const Modal = /*#__PURE__*/React.forwardRef(function Modal(inProps, ref) {
       disablePortal = false,
       disableRestoreFocus = false,
       disableScrollLock = false,
-      hideBackdrop = false,
-      keepMounted = false,
-      onBackdropClick,
-      onClose,
-      open,
-      slotProps,
-      slots,
-      // eslint-disable-next-line react/prop-types
-      theme
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$8);
-  const [exited, setExited] = React.useState(true);
+		  hideBackdrop = false,
+		  keepMounted = false,
+		  onBackdropClick,
+		  onClose,
+		  open,
+		  slotProps,
+		  slots,
+		  // eslint-disable-next-line react/prop-types
+		  theme
+	  } = props,
+	  other = _objectWithoutPropertiesLoose(props, _excluded$9);
+	const [exited, setExited] = React.useState(true);
   const commonProps = {
     container,
     closeAfterTransition,
@@ -15181,9 +17449,9 @@ function getPopoverUtilityClass(slot) {
 }
 generateUtilityClasses('MuiPopover', ['root', 'paper']);
 
-const _excluded$7 = ["onEntering"],
-  _excluded2$1 = ["action", "anchorEl", "anchorOrigin", "anchorPosition", "anchorReference", "children", "className", "container", "elevation", "marginThreshold", "open", "PaperProps", "slots", "slotProps", "transformOrigin", "TransitionComponent", "transitionDuration", "TransitionProps"],
-  _excluded3 = ["slotProps"];
+const _excluded$8 = ["onEntering"],
+	_excluded2$1 = ["action", "anchorEl", "anchorOrigin", "anchorPosition", "anchorReference", "children", "className", "container", "elevation", "marginThreshold", "open", "PaperProps", "slots", "slotProps", "transformOrigin", "TransitionComponent", "transitionDuration", "TransitionProps"],
+	_excluded3 = ["slotProps"];
 function getOffsetTop(rect, vertical) {
   let offset = 0;
   if (typeof vertical === 'number') {
@@ -15212,32 +17480,33 @@ function getTransformOriginValue(transformOrigin) {
 function resolveAnchorEl(anchorEl) {
   return typeof anchorEl === 'function' ? anchorEl() : anchorEl;
 }
-const useUtilityClasses$6 = ownerState => {
-  const {
-    classes
-  } = ownerState;
-  const slots = {
-    root: ['root'],
-    paper: ['paper']
-  };
-  return composeClasses(slots, getPopoverUtilityClass, classes);
+
+const useUtilityClasses$7 = ownerState => {
+	const {
+		classes
+	} = ownerState;
+	const slots = {
+		root: ['root'],
+		paper: ['paper']
+	};
+	return composeClasses(slots, getPopoverUtilityClass, classes);
 };
 const PopoverRoot = styled$1(Modal$1, {
-  name: 'MuiPopover',
-  slot: 'Root',
-  overridesResolver: (props, styles) => styles.root
+	name: 'MuiPopover',
+	slot: 'Root',
+	overridesResolver: (props, styles) => styles.root
 })({});
-const PopoverPaper = styled$1(PaperBase, {
-  name: 'MuiPopover',
-  slot: 'Paper',
-  overridesResolver: (props, styles) => styles.paper
+const PopoverPaper = styled$1(Paper$1, {
+	name: 'MuiPopover',
+	slot: 'Paper',
+	overridesResolver: (props, styles) => styles.paper
 })({
-  position: 'absolute',
-  overflowY: 'auto',
-  overflowX: 'hidden',
-  // So we see the popover when it's empty.
-  // It's most likely on issue on userland.
-  minWidth: 16,
+	position: 'absolute',
+	overflowY: 'auto',
+	overflowX: 'hidden',
+	// So we see the popover when it's empty.
+	// It's most likely on issue on userland.
+	minWidth: 16,
   minHeight: 16,
   maxWidth: 'calc(100% - 32px)',
   maxHeight: 'calc(100% - 32px)',
@@ -15268,33 +17537,33 @@ const Popover = /*#__PURE__*/React.forwardRef(function Popover(inProps, ref) {
       PaperProps: PaperPropsProp = {},
       slots,
       slotProps,
-      transformOrigin = {
-        vertical: 'top',
-        horizontal: 'left'
-      },
-      TransitionComponent = Grow$1,
-      transitionDuration: transitionDurationProp = 'auto',
-      TransitionProps: {
-        onEntering
-      } = {}
-    } = props,
-    TransitionProps = _objectWithoutPropertiesLoose(props.TransitionProps, _excluded$7),
-    other = _objectWithoutPropertiesLoose(props, _excluded2$1);
-  const externalPaperSlotProps = (_slotProps$paper = slotProps == null ? void 0 : slotProps.paper) != null ? _slotProps$paper : PaperPropsProp;
+		  transformOrigin = {
+			  vertical: 'top',
+			  horizontal: 'left'
+		  },
+		  TransitionComponent = Grow$1,
+		  transitionDuration: transitionDurationProp = 'auto',
+		  TransitionProps: {
+			  onEntering
+		  } = {}
+	  } = props,
+	  TransitionProps = _objectWithoutPropertiesLoose(props.TransitionProps, _excluded$8),
+	  other = _objectWithoutPropertiesLoose(props, _excluded2$1);
+	const externalPaperSlotProps = (_slotProps$paper = slotProps == null ? void 0 : slotProps.paper) != null ? _slotProps$paper : PaperPropsProp;
   const paperRef = React.useRef();
   const handlePaperRef = useForkRef(paperRef, externalPaperSlotProps.ref);
   const ownerState = _extends({}, props, {
-    anchorOrigin,
-    anchorReference,
-    elevation,
-    marginThreshold,
-    externalPaperSlotProps,
-    transformOrigin,
-    TransitionComponent,
-    transitionDuration: transitionDurationProp,
-    TransitionProps
+	  anchorOrigin,
+	  anchorReference,
+	  elevation,
+	  marginThreshold,
+	  externalPaperSlotProps,
+	  transformOrigin,
+	  TransitionComponent,
+	  transitionDuration: transitionDurationProp,
+	  TransitionProps
   });
-  const classes = useUtilityClasses$6(ownerState);
+	const classes = useUtilityClasses$7(ownerState);
 
   // Returns the top/left offset of the position
   // to attach to on the anchor element (or body if none is provided)
@@ -15684,26 +17953,26 @@ function getMenuUtilityClass(slot) {
 }
 generateUtilityClasses('MuiMenu', ['root', 'paper', 'list']);
 
-const _excluded$6 = ["onEntering"],
-  _excluded2 = ["autoFocus", "children", "disableAutoFocusItem", "MenuListProps", "onClose", "open", "PaperProps", "PopoverClasses", "transitionDuration", "TransitionProps", "variant"];
+const _excluded$7 = ["onEntering"],
+	_excluded2 = ["autoFocus", "children", "disableAutoFocusItem", "MenuListProps", "onClose", "open", "PaperProps", "PopoverClasses", "transitionDuration", "TransitionProps", "variant"];
 const RTL_ORIGIN = {
-  vertical: 'top',
-  horizontal: 'right'
+	vertical: 'top',
+	horizontal: 'right'
 };
 const LTR_ORIGIN = {
-  vertical: 'top',
-  horizontal: 'left'
+	vertical: 'top',
+	horizontal: 'left'
 };
-const useUtilityClasses$5 = ownerState => {
-  const {
-    classes
-  } = ownerState;
-  const slots = {
-    root: ['root'],
-    paper: ['paper'],
-    list: ['list']
-  };
-  return composeClasses(slots, getMenuUtilityClass, classes);
+const useUtilityClasses$6 = ownerState => {
+	const {
+		classes
+	} = ownerState;
+	const slots = {
+		root: ['root'],
+		paper: ['paper'],
+		list: ['list']
+	};
+	return composeClasses(slots, getMenuUtilityClass, classes);
 };
 const MenuRoot = styled$1(Popover$1, {
   shouldForwardProp: prop => rootShouldForwardProp(prop) || prop === 'classes',
@@ -15741,32 +18010,32 @@ const Menu$1 = /*#__PURE__*/React.forwardRef(function Menu(inProps, ref) {
       children,
       disableAutoFocusItem = false,
       MenuListProps = {},
-      onClose,
-      open,
-      PaperProps = {},
-      PopoverClasses,
-      transitionDuration = 'auto',
-      TransitionProps: {
-        onEntering
-      } = {},
-      variant = 'selectedMenu'
-    } = props,
-    TransitionProps = _objectWithoutPropertiesLoose(props.TransitionProps, _excluded$6),
-    other = _objectWithoutPropertiesLoose(props, _excluded2);
-  const theme = useTheme();
+		  onClose,
+		  open,
+		  PaperProps = {},
+		  PopoverClasses,
+		  transitionDuration = 'auto',
+		  TransitionProps: {
+			  onEntering
+		  } = {},
+		  variant = 'selectedMenu'
+	  } = props,
+	  TransitionProps = _objectWithoutPropertiesLoose(props.TransitionProps, _excluded$7),
+	  other = _objectWithoutPropertiesLoose(props, _excluded2);
+	const theme = useTheme();
   const isRtl = theme.direction === 'rtl';
-  const ownerState = _extends({}, props, {
-    autoFocus,
-    disableAutoFocusItem,
-    MenuListProps,
-    onEntering,
-    PaperProps,
-    transitionDuration,
-    TransitionProps,
-    variant
-  });
-  const classes = useUtilityClasses$5(ownerState);
-  const autoFocusItem = autoFocus && !disableAutoFocusItem && open;
+	const ownerState = _extends({}, props, {
+		autoFocus,
+		disableAutoFocusItem,
+		MenuListProps,
+		onEntering,
+		PaperProps,
+		transitionDuration,
+		TransitionProps,
+		variant
+	});
+	const classes = useUtilityClasses$6(ownerState);
+	const autoFocusItem = autoFocus && !disableAutoFocusItem && open;
   const menuListActionsRef = React.useRef(null);
   const handleEntering = (element, isAppearing) => {
     if (menuListActionsRef.current) {
@@ -15945,7 +18214,7 @@ var interopRequireDefault = {exports: {}};
 	    "default": obj
 	  };
 	}
-	module.exports = _interopRequireDefault, module.exports.__esModule = true, module.exports["default"] = module.exports; 
+	module.exports = _interopRequireDefault, module.exports.__esModule = true, module.exports["default"] = module.exports;
 } (interopRequireDefault));
 
 var interopRequireDefaultExports = interopRequireDefault.exports;
@@ -15953,21 +18222,22 @@ var interopRequireDefaultExports = interopRequireDefault.exports;
 var createSvgIcon$1 = {};
 
 function getSvgIconUtilityClass(slot) {
-  return generateUtilityClass('MuiSvgIcon', slot);
+	return generateUtilityClass('MuiSvgIcon', slot);
 }
+
 generateUtilityClasses('MuiSvgIcon', ['root', 'colorPrimary', 'colorSecondary', 'colorAction', 'colorError', 'colorDisabled', 'fontSizeInherit', 'fontSizeSmall', 'fontSizeMedium', 'fontSizeLarge']);
 
-const _excluded$5 = ["children", "className", "color", "component", "fontSize", "htmlColor", "inheritViewBox", "titleAccess", "viewBox"];
-const useUtilityClasses$4 = ownerState => {
-  const {
-    color,
-    fontSize,
-    classes
-  } = ownerState;
-  const slots = {
-    root: ['root', color !== 'inherit' && `color${capitalize(color)}`, `fontSize${capitalize(fontSize)}`]
-  };
-  return composeClasses(slots, getSvgIconUtilityClass, classes);
+const _excluded$6 = ["children", "className", "color", "component", "fontSize", "htmlColor", "inheritViewBox", "titleAccess", "viewBox"];
+const useUtilityClasses$5 = ownerState => {
+	const {
+		color,
+		fontSize,
+		classes
+	} = ownerState;
+	const slots = {
+		root: ['root', color !== 'inherit' && `color${capitalize(color)}`, `fontSize${capitalize(fontSize)}`]
+	};
+	return composeClasses(slots, getSvgIconUtilityClass, classes);
 };
 const SvgIconRoot = styled$1('svg', {
   name: 'MuiSvgIcon',
@@ -16015,18 +18285,18 @@ const SvgIcon = /*#__PURE__*/React.forwardRef(function SvgIcon(inProps, ref) {
     name: 'MuiSvgIcon'
   });
   const {
-      children,
-      className,
-      color = 'inherit',
-      component = 'svg',
-      fontSize = 'medium',
-      htmlColor,
-      inheritViewBox = false,
-      titleAccess,
-      viewBox = '0 0 24 24'
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$5);
-  const hasSvgAsChild = /*#__PURE__*/React.isValidElement(children) && children.type === 'svg';
+		  children,
+		  className,
+		  color = 'inherit',
+		  component = 'svg',
+		  fontSize = 'medium',
+		  htmlColor,
+		  inheritViewBox = false,
+		  titleAccess,
+		  viewBox = '0 0 24 24'
+	  } = props,
+	  other = _objectWithoutPropertiesLoose(props, _excluded$6);
+	const hasSvgAsChild = /*#__PURE__*/React.isValidElement(children) && children.type === 'svg';
   const ownerState = _extends({}, props, {
     color,
     component,
@@ -16040,7 +18310,7 @@ const SvgIcon = /*#__PURE__*/React.forwardRef(function SvgIcon(inProps, ref) {
   if (!inheritViewBox) {
     more.viewBox = viewBox;
   }
-  const classes = useUtilityClasses$4(ownerState);
+	const classes = useUtilityClasses$5(ownerState);
   return /*#__PURE__*/jsxs(SvgIconRoot, _extends({
     as: component,
     className: clsx(classes.root, className),
@@ -16200,7 +18470,7 @@ function requireCreateSvgIcon () {
 		    return _utils.createSvgIcon;
 		  }
 		});
-		var _utils = require$$0; 
+		var _utils = require$$0;
 	} (createSvgIcon$1));
 	return createSvgIcon$1;
 }
@@ -16279,26 +18549,27 @@ process.env.NODE_ENV !== "production" ? Container.propTypes /* remove-proptypes 
 var Container$1 = Container;
 
 var Person = createSvgIcon( /*#__PURE__*/jsx("path", {
-  d: "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"
+	d: "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"
 }), 'Person');
 
 function getAvatarUtilityClass(slot) {
-  return generateUtilityClass('MuiAvatar', slot);
+	return generateUtilityClass('MuiAvatar', slot);
 }
+
 generateUtilityClasses('MuiAvatar', ['root', 'colorDefault', 'circular', 'rounded', 'square', 'img', 'fallback']);
 
-const _excluded$4 = ["alt", "children", "className", "component", "imgProps", "sizes", "src", "srcSet", "variant"];
-const useUtilityClasses$3 = ownerState => {
-  const {
-    classes,
-    variant,
-    colorDefault
-  } = ownerState;
-  const slots = {
-    root: ['root', variant, colorDefault && 'colorDefault'],
-    img: ['img'],
-    fallback: ['fallback']
-  };
+const _excluded$5 = ["alt", "children", "className", "component", "imgProps", "sizes", "src", "srcSet", "variant"];
+const useUtilityClasses$4 = ownerState => {
+	const {
+		classes,
+		variant,
+		colorDefault
+	} = ownerState;
+	const slots = {
+		root: ['root', variant, colorDefault && 'colorDefault'],
+		img: ['img'],
+		fallback: ['fallback']
+	};
   return composeClasses(slots, getAvatarUtilityClass, classes);
 };
 const AvatarRoot = styled$1('div', {
@@ -16405,18 +18676,18 @@ const Avatar = /*#__PURE__*/React.forwardRef(function Avatar(inProps, ref) {
     name: 'MuiAvatar'
   });
   const {
-      alt,
-      children: childrenProp,
-      className,
-      component = 'div',
-      imgProps,
-      sizes,
-      src,
-      srcSet,
-      variant = 'circular'
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$4);
-  let children = null;
+		  alt,
+		  children: childrenProp,
+		  className,
+		  component = 'div',
+		  imgProps,
+		  sizes,
+		  src,
+		  srcSet,
+		  variant = 'circular'
+	  } = props,
+	  other = _objectWithoutPropertiesLoose(props, _excluded$5);
+	let children = null;
 
   // Use a hook instead of onError on the img element to support server-side rendering.
   const loaded = useLoaded(_extends({}, imgProps, {
@@ -16425,12 +18696,12 @@ const Avatar = /*#__PURE__*/React.forwardRef(function Avatar(inProps, ref) {
   }));
   const hasImg = src || srcSet;
   const hasImgNotFailing = hasImg && loaded !== 'error';
-  const ownerState = _extends({}, props, {
-    colorDefault: !hasImgNotFailing,
-    component,
-    variant
-  });
-  const classes = useUtilityClasses$3(ownerState);
+	const ownerState = _extends({}, props, {
+		colorDefault: !hasImgNotFailing,
+		component,
+		variant
+	});
+	const classes = useUtilityClasses$4(ownerState);
   if (hasImgNotFailing) {
     children = /*#__PURE__*/jsx(AvatarImg, _extends({
       alt: alt,
@@ -16528,22 +18799,22 @@ var buttonClasses$1 = buttonClasses;
  */
 const ButtonGroupContext = /*#__PURE__*/React.createContext({});
 if (process.env.NODE_ENV !== 'production') {
-  ButtonGroupContext.displayName = 'ButtonGroupContext';
+	ButtonGroupContext.displayName = 'ButtonGroupContext';
 }
 var ButtonGroupContext$1 = ButtonGroupContext;
 
-const _excluded$3 = ["children", "color", "component", "className", "disabled", "disableElevation", "disableFocusRipple", "endIcon", "focusVisibleClassName", "fullWidth", "size", "startIcon", "type", "variant"];
-const useUtilityClasses$2 = ownerState => {
-  const {
-    color,
-    disableElevation,
-    fullWidth,
-    size,
-    variant,
-    classes
-  } = ownerState;
-  const slots = {
-    root: ['root', variant, `${variant}${capitalize(color)}`, `size${capitalize(size)}`, `${variant}Size${capitalize(size)}`, color === 'inherit' && 'colorInherit', disableElevation && 'disableElevation', fullWidth && 'fullWidth'],
+const _excluded$4 = ["children", "color", "component", "className", "disabled", "disableElevation", "disableFocusRipple", "endIcon", "focusVisibleClassName", "fullWidth", "size", "startIcon", "type", "variant"];
+const useUtilityClasses$3 = ownerState => {
+	const {
+		color,
+		disableElevation,
+		fullWidth,
+		size,
+		variant,
+		classes
+	} = ownerState;
+	const slots = {
+		root: ['root', variant, `${variant}${capitalize(color)}`, `size${capitalize(size)}`, `${variant}Size${capitalize(size)}`, color === 'inherit' && 'colorInherit', disableElevation && 'disableElevation', fullWidth && 'fullWidth'],
     label: ['label'],
     startIcon: ['startIcon', `iconSize${capitalize(size)}`],
     endIcon: ['endIcon', `iconSize${capitalize(size)}`]
@@ -16748,34 +19019,34 @@ const Button = /*#__PURE__*/React.forwardRef(function Button(inProps, ref) {
       component = 'button',
       className,
       disabled = false,
-      disableElevation = false,
-      disableFocusRipple = false,
-      endIcon: endIconProp,
-      focusVisibleClassName,
-      fullWidth = false,
-      size = 'medium',
-      startIcon: startIconProp,
-      type,
-      variant = 'text'
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$3);
-  const ownerState = _extends({}, props, {
-    color,
-    component,
-    disabled,
-    disableElevation,
-    disableFocusRipple,
-    fullWidth,
-    size,
-    type,
-    variant
-  });
-  const classes = useUtilityClasses$2(ownerState);
-  const startIcon = startIconProp && /*#__PURE__*/jsx(ButtonStartIcon, {
-    className: classes.startIcon,
-    ownerState: ownerState,
-    children: startIconProp
-  });
+		  disableElevation = false,
+		  disableFocusRipple = false,
+		  endIcon: endIconProp,
+		  focusVisibleClassName,
+		  fullWidth = false,
+		  size = 'medium',
+		  startIcon: startIconProp,
+		  type,
+		  variant = 'text'
+	  } = props,
+	  other = _objectWithoutPropertiesLoose(props, _excluded$4);
+	const ownerState = _extends({}, props, {
+		color,
+		component,
+		disabled,
+		disableElevation,
+		disableFocusRipple,
+		fullWidth,
+		size,
+		type,
+		variant
+	});
+	const classes = useUtilityClasses$3(ownerState);
+	const startIcon = startIconProp && /*#__PURE__*/jsx(ButtonStartIcon, {
+		className: classes.startIcon,
+		ownerState: ownerState,
+		children: startIconProp
+	});
   const endIcon = endIconProp && /*#__PURE__*/jsx(ButtonEndIcon, {
     className: classes.endIcon,
     ownerState: ownerState,
@@ -16891,11 +19162,11 @@ process.env.NODE_ENV !== "production" ? Button.propTypes /* remove-proptypes */ 
 } : void 0;
 var Button$1 = Button;
 
-const _excluded$2 = ["anchorEl", "component", "components", "componentsProps", "container", "disablePortal", "keepMounted", "modifiers", "open", "placement", "popperOptions", "popperRef", "transition", "slots", "slotProps"];
+const _excluded$3 = ["anchorEl", "component", "components", "componentsProps", "container", "disablePortal", "keepMounted", "modifiers", "open", "placement", "popperOptions", "popperRef", "transition", "slots", "slotProps"];
 const PopperRoot = styled$1(BasePopper, {
-  name: 'MuiPopper',
-  slot: 'Root',
-  overridesResolver: (props, styles) => styles.root
+	name: 'MuiPopper',
+	slot: 'Root',
+	overridesResolver: (props, styles) => styles.root
 })({});
 
 /**
@@ -16924,18 +19195,18 @@ const Popper = /*#__PURE__*/React.forwardRef(function Popper(inProps, ref) {
       componentsProps,
       container,
       disablePortal,
-      keepMounted,
-      modifiers,
-      open,
-      placement,
-      popperOptions,
-      popperRef,
-      transition,
-      slots,
-      slotProps
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$2);
-  const RootComponent = (_slots$root = slots == null ? void 0 : slots.root) != null ? _slots$root : components == null ? void 0 : components.Root;
+		  keepMounted,
+		  modifiers,
+		  open,
+		  placement,
+		  popperOptions,
+		  popperRef,
+		  transition,
+		  slots,
+		  slotProps
+	  } = props,
+	  other = _objectWithoutPropertiesLoose(props, _excluded$3);
+	const RootComponent = (_slots$root = slots == null ? void 0 : slots.root) != null ? _slots$root : components == null ? void 0 : components.Root;
   const otherProps = _extends({
     anchorEl,
     container,
@@ -17091,21 +19362,22 @@ function getTooltipUtilityClass(slot) {
 const tooltipClasses = generateUtilityClasses('MuiTooltip', ['popper', 'popperInteractive', 'popperArrow', 'popperClose', 'tooltip', 'tooltipArrow', 'touch', 'tooltipPlacementLeft', 'tooltipPlacementRight', 'tooltipPlacementTop', 'tooltipPlacementBottom', 'arrow']);
 var tooltipClasses$1 = tooltipClasses;
 
-const _excluded$1 = ["arrow", "children", "classes", "components", "componentsProps", "describeChild", "disableFocusListener", "disableHoverListener", "disableInteractive", "disableTouchListener", "enterDelay", "enterNextDelay", "enterTouchDelay", "followCursor", "id", "leaveDelay", "leaveTouchDelay", "onClose", "onOpen", "open", "placement", "PopperComponent", "PopperProps", "slotProps", "slots", "title", "TransitionComponent", "TransitionProps"];
+const _excluded$2 = ["arrow", "children", "classes", "components", "componentsProps", "describeChild", "disableFocusListener", "disableHoverListener", "disableInteractive", "disableTouchListener", "enterDelay", "enterNextDelay", "enterTouchDelay", "followCursor", "id", "leaveDelay", "leaveTouchDelay", "onClose", "onOpen", "open", "placement", "PopperComponent", "PopperProps", "slotProps", "slots", "title", "TransitionComponent", "TransitionProps"];
 function round(value) {
   return Math.round(value * 1e5) / 1e5;
 }
-const useUtilityClasses$1 = ownerState => {
-  const {
-    classes,
-    disableInteractive,
-    arrow,
-    touch,
-    placement
-  } = ownerState;
-  const slots = {
-    popper: ['popper', !disableInteractive && 'popperInteractive', arrow && 'popperArrow'],
-    tooltip: ['tooltip', arrow && 'tooltipArrow', touch && 'touch', `tooltipPlacement${capitalize(placement.split('-')[0])}`],
+
+const useUtilityClasses$2 = ownerState => {
+	const {
+		classes,
+		disableInteractive,
+		arrow,
+		touch,
+		placement
+	} = ownerState;
+	const slots = {
+		popper: ['popper', !disableInteractive && 'popperInteractive', arrow && 'popperArrow'],
+		tooltip: ['tooltip', arrow && 'tooltipArrow', touch && 'touch', `tooltipPlacement${capitalize(placement.split('-')[0])}`],
     arrow: ['arrow']
   };
   return composeClasses(slots, getTooltipUtilityClass, classes);
@@ -17303,17 +19575,17 @@ const Tooltip = /*#__PURE__*/React.forwardRef(function Tooltip(inProps, ref) {
       leaveTouchDelay = 1500,
       onClose,
       onOpen,
-      open: openProp,
-      placement = 'bottom',
-      PopperComponent: PopperComponentProp,
-      PopperProps = {},
-      slotProps = {},
-      slots = {},
-      title,
-      TransitionComponent: TransitionComponentProp = Grow$1,
-      TransitionProps
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded$1);
+		  open: openProp,
+		  placement = 'bottom',
+		  PopperComponent: PopperComponentProp,
+		  PopperProps = {},
+		  slotProps = {},
+		  slots = {},
+		  title,
+		  TransitionComponent: TransitionComponentProp = Grow$1,
+		  TransitionProps
+	  } = props,
+	  other = _objectWithoutPropertiesLoose(props, _excluded$2);
 
   // to prevent runtime errors, developers will need to provide a child as a React element anyway.
   const children = /*#__PURE__*/React.isValidElement(childrenProp) ? childrenProp : /*#__PURE__*/jsx("span", {
@@ -17593,16 +19865,16 @@ const Tooltip = /*#__PURE__*/React.forwardRef(function Tooltip(inProps, ref) {
       modifiers: tooltipModifiers
     });
   }, [arrowRef, PopperProps]);
-  const ownerState = _extends({}, props, {
-    isRtl,
-    arrow,
-    disableInteractive,
-    placement,
-    PopperComponentProp,
-    touch: ignoreNonTouchEvents.current
-  });
-  const classes = useUtilityClasses$1(ownerState);
-  const PopperComponent = (_ref = (_slots$popper = slots.popper) != null ? _slots$popper : components.Popper) != null ? _ref : TooltipPopper;
+	const ownerState = _extends({}, props, {
+		isRtl,
+		arrow,
+		disableInteractive,
+		placement,
+		PopperComponentProp,
+		touch: ignoreNonTouchEvents.current
+	});
+	const classes = useUtilityClasses$2(ownerState);
+	const PopperComponent = (_ref = (_slots$popper = slots.popper) != null ? _slots$popper : components.Popper) != null ? _ref : TooltipPopper;
   const TransitionComponent = (_ref2 = (_ref3 = (_slots$transition = slots.transition) != null ? _slots$transition : components.Transition) != null ? _ref3 : TransitionComponentProp) != null ? _ref2 : Grow$1;
   const TooltipComponent = (_ref4 = (_slots$tooltip = slots.tooltip) != null ? _slots$tooltip : components.Tooltip) != null ? _ref4 : TooltipTooltip;
   const ArrowComponent = (_ref5 = (_slots$arrow = slots.arrow) != null ? _slots$arrow : components.Arrow) != null ? _ref5 : TooltipArrow;
@@ -17860,24 +20132,24 @@ function getMenuItemUtilityClass(slot) {
 const menuItemClasses = generateUtilityClasses('MuiMenuItem', ['root', 'focusVisible', 'dense', 'disabled', 'divider', 'gutters', 'selected']);
 var menuItemClasses$1 = menuItemClasses;
 
-const _excluded = ["autoFocus", "component", "dense", "divider", "disableGutters", "focusVisibleClassName", "role", "tabIndex", "className"];
+const _excluded$1 = ["autoFocus", "component", "dense", "divider", "disableGutters", "focusVisibleClassName", "role", "tabIndex", "className"];
 const overridesResolver = (props, styles) => {
-  const {
-    ownerState
-  } = props;
-  return [styles.root, ownerState.dense && styles.dense, ownerState.divider && styles.divider, !ownerState.disableGutters && styles.gutters];
+	const {
+		ownerState
+	} = props;
+	return [styles.root, ownerState.dense && styles.dense, ownerState.divider && styles.divider, !ownerState.disableGutters && styles.gutters];
 };
-const useUtilityClasses = ownerState => {
-  const {
-    disabled,
-    dense,
-    divider,
-    disableGutters,
-    selected,
-    classes
-  } = ownerState;
-  const slots = {
-    root: ['root', dense && 'dense', disabled && 'disabled', !disableGutters && 'gutters', divider && 'divider', selected && 'selected']
+const useUtilityClasses$1 = ownerState => {
+	const {
+		disabled,
+		dense,
+		divider,
+		disableGutters,
+		selected,
+		classes
+	} = ownerState;
+	const slots = {
+		root: ['root', dense && 'dense', disabled && 'disabled', !disableGutters && 'gutters', divider && 'divider', selected && 'selected']
   };
   const composedClasses = composeClasses(slots, getMenuItemUtilityClass, classes);
   return _extends({}, classes, composedClasses);
@@ -17972,18 +20244,18 @@ const MenuItem = /*#__PURE__*/React.forwardRef(function MenuItem(inProps, ref) {
     name: 'MuiMenuItem'
   });
   const {
-      autoFocus = false,
-      component = 'li',
-      dense = false,
-      divider = false,
-      disableGutters = false,
-      focusVisibleClassName,
-      role = 'menuitem',
-      tabIndex: tabIndexProp,
-      className
-    } = props,
-    other = _objectWithoutPropertiesLoose(props, _excluded);
-  const context = React.useContext(ListContext$1);
+		  autoFocus = false,
+		  component = 'li',
+		  dense = false,
+		  divider = false,
+		  disableGutters = false,
+		  focusVisibleClassName,
+		  role = 'menuitem',
+		  tabIndex: tabIndexProp,
+		  className
+	  } = props,
+	  other = _objectWithoutPropertiesLoose(props, _excluded$1);
+	const context = React.useContext(ListContext$1);
   const childContext = React.useMemo(() => ({
     dense: dense || context.dense || false,
     disableGutters
@@ -17998,13 +20270,13 @@ const MenuItem = /*#__PURE__*/React.forwardRef(function MenuItem(inProps, ref) {
       }
     }
   }, [autoFocus]);
-  const ownerState = _extends({}, props, {
-    dense: childContext.dense,
-    divider,
-    disableGutters
-  });
-  const classes = useUtilityClasses(props);
-  const handleRef = useForkRef(menuItemRef, ref);
+	const ownerState = _extends({}, props, {
+		dense: childContext.dense,
+		divider,
+		disableGutters
+	});
+	const classes = useUtilityClasses$1(props);
+	const handleRef = useForkRef(menuItemRef, ref);
   let tabIndex;
   if (!props.disabled) {
     tabIndex = tabIndexProp !== undefined ? tabIndexProp : -1;
@@ -18134,94 +20406,1005 @@ function NavBar() {
         setAnchorElUser(null);
     };
     return (React__default.createElement(AppBar$1, { position: "static" },
-        React__default.createElement(Container$1, { maxWidth: "xl" },
-            React__default.createElement(Toolbar$1, {disableGutters: true},
-                React__default.createElement(default_1, {sx: {display: {xs: 'none', md: 'flex'}, mr: 1}}),
-                React__default.createElement(Typography$1, {
-                    variant: "h6", noWrap: true, component: "a", href: "/", sx: {
-                        mr: 2,
-                        display: {xs: 'none', md: 'flex'},
-                        fontFamily: 'monospace',
-                        fontWeight: 700,
-                        letterSpacing: '.3rem',
-                        color: 'inherit',
-                        textDecoration: 'none',
-                    }
-                }, text),
-                React__default.createElement(Box$1, {sx: {flexGrow: 1, display: {xs: 'flex', md: 'none'}}},
-                    React__default.createElement(IconButton$1, {
-                            size: "large",
-                            "aria-label": "account of current user",
-                            "aria-controls": "menu-appbar",
-                            "aria-haspopup": "true",
-                            onClick: handleOpenNavMenu,
-                            color: "inherit"
-                        },
-                        React__default.createElement(default_1$1, null)),
-                    React__default.createElement(Menu$2, {
-                        id: "menu-appbar", anchorEl: anchorElNav, anchorOrigin: {
-                            vertical: 'bottom',
-                            horizontal: 'left',
-                        }, keepMounted: true, transformOrigin: {
-                            vertical: 'top',
-                            horizontal: 'left',
-                        }, open: Boolean(anchorElNav), onClose: handleCloseNavMenu, sx: {
-                            display: { xs: 'block', md: 'none' },
-                        } }, pages.map(function (page) { return (React__default.createElement(MenuItem$1, { key: page, onClick: handleCloseNavMenu },
-                        React__default.createElement(Typography$1, { textAlign: "center" }, page))); }))),
-                React__default.createElement(default_1, {sx: {display: {xs: 'flex', md: 'none'}, mr: 1}}),
-                React__default.createElement(Typography$1, {
-                    variant: "h5", noWrap: true, component: "a", href: "", sx: {
-                        mr: 2,
-                        display: {xs: 'flex', md: 'none'},
-                        flexGrow: 1,
-                        fontFamily: 'monospace',
-                        fontWeight: 700,
-                        letterSpacing: '.3rem',
-                        color: 'inherit',
-                        textDecoration: 'none',
-                    }
-                }, text),
-                React__default.createElement(Box$1, {
-                    sx: {
-                        flexGrow: 1,
-                        display: {xs: 'none', md: 'flex'}
-                    }
-                }, pages.map(function (page) {
-                    return (React__default.createElement(Button$1, {
-                        key: page,
-                        onClick: handleCloseNavMenu,
-                        sx: {my: 2, color: 'white', display: 'block'}
-                    }, page));
-                })),
-                React__default.createElement(Box$1, {sx: {flexGrow: 0}},
-                    React__default.createElement(Tooltip$1, {title: "Open settings"},
-                        React__default.createElement(IconButton$1, {onClick: handleOpenUserMenu, sx: {p: 0}},
-                            React__default.createElement(Avatar$1, {
-                                alt: "Remy Sharp",
-                                src: "/static/images/avatar/2.jpg"
-                            }))),
-                    React__default.createElement(Menu$2, {
-                        sx: {mt: '45px'}, id: "menu-appbar", anchorEl: anchorElUser, anchorOrigin: {
-                            vertical: 'top',
-                            horizontal: 'right',
-                        }, keepMounted: true, transformOrigin: {
-                            vertical: 'top',
-                            horizontal: 'right',
-                        }, open: Boolean(anchorElUser), onClose: handleCloseUserMenu }, settings.map(function (setting) { return (React__default.createElement(MenuItem$1, { key: setting, onClick: handleCloseUserMenu },
-                        React__default.createElement(Typography$1, { textAlign: "center" }, setting))); })))))));
+        React__default.createElement(Container$1, {maxWidth: "xl"},
+			React__default.createElement(Toolbar$1, {disableGutters: true},
+				React__default.createElement(default_1, {sx: {display: {xs: 'none', md: 'flex'}, mr: 1}}),
+				React__default.createElement(Typography$1, {
+					variant: "h6", noWrap: true, component: "a", href: "/", sx: {
+						mr: 2,
+						display: {xs: 'none', md: 'flex'},
+						fontFamily: 'monospace',
+						fontWeight: 700,
+						letterSpacing: '.3rem',
+						color: 'inherit',
+						textDecoration: 'none',
+					}
+				}, text),
+				React__default.createElement(Box$1, {sx: {flexGrow: 1, display: {xs: 'flex', md: 'none'}}},
+					React__default.createElement(IconButton$1, {
+							size: "large",
+							"aria-label": "account of current user",
+							"aria-controls": "menu-appbar",
+							"aria-haspopup": "true",
+							onClick: handleOpenNavMenu,
+							color: "inherit"
+						},
+						React__default.createElement(default_1$1, null)),
+					React__default.createElement(Menu$2, {
+						id: "menu-appbar", anchorEl: anchorElNav, anchorOrigin: {
+							vertical: 'bottom',
+							horizontal: 'left',
+						}, keepMounted: true, transformOrigin: {
+							vertical: 'top',
+							horizontal: 'left',
+						}, open: Boolean(anchorElNav), onClose: handleCloseNavMenu, sx: {
+							display: {xs: 'block', md: 'none'},
+						}
+					}, pages.map(function (page) {
+						return (React__default.createElement(MenuItem$1, {key: page, onClick: handleCloseNavMenu},
+							React__default.createElement(Typography$1, {textAlign: "center"}, page)));
+					}))),
+				React__default.createElement(default_1, {sx: {display: {xs: 'flex', md: 'none'}, mr: 1}}),
+				React__default.createElement(Typography$1, {
+					variant: "h5", noWrap: true, component: "a", href: "", sx: {
+						mr: 2,
+						display: {xs: 'flex', md: 'none'},
+						flexGrow: 1,
+						fontFamily: 'monospace',
+						fontWeight: 700,
+						letterSpacing: '.3rem',
+						color: 'inherit',
+						textDecoration: 'none',
+					}
+				}, text),
+				React__default.createElement(Box$1, {
+					sx: {
+						flexGrow: 1,
+						display: {xs: 'none', md: 'flex'}
+					}
+				}, pages.map(function (page) {
+					return (React__default.createElement(Button$1, {
+						key: page,
+						onClick: handleCloseNavMenu,
+						sx: {my: 2, color: 'white', display: 'block'}
+					}, page));
+				})),
+				React__default.createElement(Box$1, {sx: {flexGrow: 0}},
+					React__default.createElement(Tooltip$1, {title: "Open settings"},
+						React__default.createElement(IconButton$1, {onClick: handleOpenUserMenu, sx: {p: 0}},
+							React__default.createElement(Avatar$1, {
+								alt: "Remy Sharp",
+								src: "/static/images/avatar/2.jpg"
+							}))),
+					React__default.createElement(Menu$2, {
+						sx: {mt: '45px'}, id: "menu-appbar", anchorEl: anchorElUser, anchorOrigin: {
+							vertical: 'top',
+							horizontal: 'right',
+						}, keepMounted: true, transformOrigin: {
+							vertical: 'top',
+							horizontal: 'right',
+						}, open: Boolean(anchorElUser), onClose: handleCloseUserMenu
+					}, settings.map(function (setting) {
+						return (React__default.createElement(MenuItem$1, {key: setting, onClick: handleCloseUserMenu},
+							React__default.createElement(Typography$1, {textAlign: "center"}, setting)));
+					})))))));
 }
 
-// import Footer from "./components/Footer";
-// import HomePage from "./components/HomePage";
-// import Report from "./components/Report";
-// import List from "./components/List";
+/**
+ * @ignore - internal component.
+ */
+const GridContext = /*#__PURE__*/React.createContext();
+if (process.env.NODE_ENV !== 'production') {
+	GridContext.displayName = 'GridContext';
+}
+var GridContext$1 = GridContext;
+
+function getGridUtilityClass(slot) {
+	return generateUtilityClass('MuiGrid', slot);
+}
+
+const SPACINGS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+const DIRECTIONS = ['column-reverse', 'column', 'row-reverse', 'row'];
+const WRAPS = ['nowrap', 'wrap-reverse', 'wrap'];
+const GRID_SIZES = ['auto', true, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+const gridClasses = generateUtilityClasses('MuiGrid', ['root', 'container', 'item', 'zeroMinWidth',
+// spacings
+	...SPACINGS.map(spacing => `spacing-xs-${spacing}`),
+// direction values
+	...DIRECTIONS.map(direction => `direction-xs-${direction}`),
+// wrap values
+	...WRAPS.map(wrap => `wrap-xs-${wrap}`),
+// grid sizes for all breakpoints
+	...GRID_SIZES.map(size => `grid-xs-${size}`), ...GRID_SIZES.map(size => `grid-sm-${size}`), ...GRID_SIZES.map(size => `grid-md-${size}`), ...GRID_SIZES.map(size => `grid-lg-${size}`), ...GRID_SIZES.map(size => `grid-xl-${size}`)]);
+
+const _excluded = ["className", "columns", "columnSpacing", "component", "container", "direction", "item", "rowSpacing", "spacing", "wrap", "zeroMinWidth"];
+
+function getOffset(val) {
+	const parse = parseFloat(val);
+	return `${parse}${String(val).replace(String(parse), '') || 'px'}`;
+}
+
+function generateGrid({
+						  theme,
+						  ownerState
+					  }) {
+	let size;
+	return theme.breakpoints.keys.reduce((globalStyles, breakpoint) => {
+		// Use side effect over immutability for better performance.
+		let styles = {};
+		if (ownerState[breakpoint]) {
+			size = ownerState[breakpoint];
+		}
+		if (!size) {
+			return globalStyles;
+		}
+		if (size === true) {
+			// For the auto layouting
+			styles = {
+				flexBasis: 0,
+				flexGrow: 1,
+				maxWidth: '100%'
+			};
+		} else if (size === 'auto') {
+			styles = {
+				flexBasis: 'auto',
+				flexGrow: 0,
+				flexShrink: 0,
+				maxWidth: 'none',
+				width: 'auto'
+			};
+		} else {
+			const columnsBreakpointValues = resolveBreakpointValues({
+				values: ownerState.columns,
+				breakpoints: theme.breakpoints.values
+			});
+			const columnValue = typeof columnsBreakpointValues === 'object' ? columnsBreakpointValues[breakpoint] : columnsBreakpointValues;
+			if (columnValue === undefined || columnValue === null) {
+				return globalStyles;
+			}
+			// Keep 7 significant numbers.
+			const width = `${Math.round(size / columnValue * 10e7) / 10e5}%`;
+			let more = {};
+			if (ownerState.container && ownerState.item && ownerState.columnSpacing !== 0) {
+				const themeSpacing = theme.spacing(ownerState.columnSpacing);
+				if (themeSpacing !== '0px') {
+					const fullWidth = `calc(${width} + ${getOffset(themeSpacing)})`;
+					more = {
+						flexBasis: fullWidth,
+						maxWidth: fullWidth
+					};
+				}
+			}
+
+			// Close to the bootstrap implementation:
+			// https://github.com/twbs/bootstrap/blob/8fccaa2439e97ec72a4b7dc42ccc1f649790adb0/scss/mixins/_grid.scss#L41
+			styles = _extends({
+				flexBasis: width,
+				flexGrow: 0,
+				maxWidth: width
+			}, more);
+		}
+
+		// No need for a media query for the first size.
+		if (theme.breakpoints.values[breakpoint] === 0) {
+			Object.assign(globalStyles, styles);
+		} else {
+			globalStyles[theme.breakpoints.up(breakpoint)] = styles;
+		}
+		return globalStyles;
+	}, {});
+}
+
+function generateDirection({
+							   theme,
+							   ownerState
+						   }) {
+	const directionValues = resolveBreakpointValues({
+		values: ownerState.direction,
+		breakpoints: theme.breakpoints.values
+	});
+	return handleBreakpoints({
+		theme
+	}, directionValues, propValue => {
+		const output = {
+			flexDirection: propValue
+		};
+		if (propValue.indexOf('column') === 0) {
+			output[`& > .${gridClasses.item}`] = {
+				maxWidth: 'none'
+			};
+		}
+		return output;
+	});
+}
+
+/**
+ * Extracts zero value breakpoint keys before a non-zero value breakpoint key.
+ * @example { xs: 0, sm: 0, md: 2, lg: 0, xl: 0 } or [0, 0, 2, 0, 0]
+ * @returns [xs, sm]
+ */
+function extractZeroValueBreakpointKeys({
+											breakpoints,
+											values
+										}) {
+	let nonZeroKey = '';
+	Object.keys(values).forEach(key => {
+		if (nonZeroKey !== '') {
+			return;
+		}
+		if (values[key] !== 0) {
+			nonZeroKey = key;
+		}
+	});
+	const sortedBreakpointKeysByValue = Object.keys(breakpoints).sort((a, b) => {
+		return breakpoints[a] - breakpoints[b];
+	});
+	return sortedBreakpointKeysByValue.slice(0, sortedBreakpointKeysByValue.indexOf(nonZeroKey));
+}
+
+function generateRowGap({
+							theme,
+							ownerState
+						}) {
+	const {
+		container,
+		rowSpacing
+	} = ownerState;
+	let styles = {};
+	if (container && rowSpacing !== 0) {
+		const rowSpacingValues = resolveBreakpointValues({
+			values: rowSpacing,
+			breakpoints: theme.breakpoints.values
+		});
+		let zeroValueBreakpointKeys;
+		if (typeof rowSpacingValues === 'object') {
+			zeroValueBreakpointKeys = extractZeroValueBreakpointKeys({
+				breakpoints: theme.breakpoints.values,
+				values: rowSpacingValues
+			});
+		}
+		styles = handleBreakpoints({
+			theme
+		}, rowSpacingValues, (propValue, breakpoint) => {
+			var _zeroValueBreakpointK;
+			const themeSpacing = theme.spacing(propValue);
+			if (themeSpacing !== '0px') {
+				return {
+					marginTop: `-${getOffset(themeSpacing)}`,
+					[`& > .${gridClasses.item}`]: {
+						paddingTop: getOffset(themeSpacing)
+					}
+				};
+			}
+			if ((_zeroValueBreakpointK = zeroValueBreakpointKeys) != null && _zeroValueBreakpointK.includes(breakpoint)) {
+				return {};
+			}
+			return {
+				marginTop: 0,
+				[`& > .${gridClasses.item}`]: {
+					paddingTop: 0
+				}
+			};
+		});
+	}
+	return styles;
+}
+
+function generateColumnGap({
+							   theme,
+							   ownerState
+						   }) {
+	const {
+		container,
+		columnSpacing
+	} = ownerState;
+	let styles = {};
+	if (container && columnSpacing !== 0) {
+		const columnSpacingValues = resolveBreakpointValues({
+			values: columnSpacing,
+			breakpoints: theme.breakpoints.values
+		});
+		let zeroValueBreakpointKeys;
+		if (typeof columnSpacingValues === 'object') {
+			zeroValueBreakpointKeys = extractZeroValueBreakpointKeys({
+				breakpoints: theme.breakpoints.values,
+				values: columnSpacingValues
+			});
+		}
+		styles = handleBreakpoints({
+			theme
+		}, columnSpacingValues, (propValue, breakpoint) => {
+			var _zeroValueBreakpointK2;
+			const themeSpacing = theme.spacing(propValue);
+			if (themeSpacing !== '0px') {
+				return {
+					width: `calc(100% + ${getOffset(themeSpacing)})`,
+					marginLeft: `-${getOffset(themeSpacing)}`,
+					[`& > .${gridClasses.item}`]: {
+						paddingLeft: getOffset(themeSpacing)
+					}
+				};
+			}
+			if ((_zeroValueBreakpointK2 = zeroValueBreakpointKeys) != null && _zeroValueBreakpointK2.includes(breakpoint)) {
+				return {};
+			}
+			return {
+				width: '100%',
+				marginLeft: 0,
+				[`& > .${gridClasses.item}`]: {
+					paddingLeft: 0
+				}
+			};
+		});
+	}
+	return styles;
+}
+
+function resolveSpacingStyles(spacing, breakpoints, styles = {}) {
+	// undefined/null or `spacing` <= 0
+	if (!spacing || spacing <= 0) {
+		return [];
+	}
+	// in case of string/number `spacing`
+	if (typeof spacing === 'string' && !Number.isNaN(Number(spacing)) || typeof spacing === 'number') {
+		return [styles[`spacing-xs-${String(spacing)}`]];
+	}
+	// in case of object `spacing`
+	const spacingStyles = [];
+	breakpoints.forEach(breakpoint => {
+		const value = spacing[breakpoint];
+		if (Number(value) > 0) {
+			spacingStyles.push(styles[`spacing-${breakpoint}-${String(value)}`]);
+		}
+	});
+	return spacingStyles;
+}
+
+// Default CSS values
+// flex: '0 1 auto',
+// flexDirection: 'row',
+// alignItems: 'flex-start',
+// flexWrap: 'nowrap',
+// justifyContent: 'flex-start',
+const GridRoot = styled$1('div', {
+	name: 'MuiGrid',
+	slot: 'Root',
+	overridesResolver: (props, styles) => {
+		const {
+			ownerState
+		} = props;
+		const {
+			container,
+			direction,
+			item,
+			spacing,
+			wrap,
+			zeroMinWidth,
+			breakpoints
+		} = ownerState;
+		let spacingStyles = [];
+
+		// in case of grid item
+		if (container) {
+			spacingStyles = resolveSpacingStyles(spacing, breakpoints, styles);
+		}
+		const breakpointsStyles = [];
+		breakpoints.forEach(breakpoint => {
+			const value = ownerState[breakpoint];
+			if (value) {
+				breakpointsStyles.push(styles[`grid-${breakpoint}-${String(value)}`]);
+			}
+		});
+		return [styles.root, container && styles.container, item && styles.item, zeroMinWidth && styles.zeroMinWidth, ...spacingStyles, direction !== 'row' && styles[`direction-xs-${String(direction)}`], wrap !== 'wrap' && styles[`wrap-xs-${String(wrap)}`], ...breakpointsStyles];
+	}
+})(({
+		ownerState
+	}) => _extends({
+	boxSizing: 'border-box'
+}, ownerState.container && {
+	display: 'flex',
+	flexWrap: 'wrap',
+	width: '100%'
+}, ownerState.item && {
+	margin: 0 // For instance, it's useful when used with a `figure` element.
+}, ownerState.zeroMinWidth && {
+	minWidth: 0
+}, ownerState.wrap !== 'wrap' && {
+	flexWrap: ownerState.wrap
+}), generateDirection, generateRowGap, generateColumnGap, generateGrid);
+
+function resolveSpacingClasses(spacing, breakpoints) {
+	// undefined/null or `spacing` <= 0
+	if (!spacing || spacing <= 0) {
+		return [];
+	}
+	// in case of string/number `spacing`
+	if (typeof spacing === 'string' && !Number.isNaN(Number(spacing)) || typeof spacing === 'number') {
+		return [`spacing-xs-${String(spacing)}`];
+	}
+	// in case of object `spacing`
+	const classes = [];
+	breakpoints.forEach(breakpoint => {
+		const value = spacing[breakpoint];
+		if (Number(value) > 0) {
+			const className = `spacing-${breakpoint}-${String(value)}`;
+			classes.push(className);
+		}
+	});
+	return classes;
+}
+
+const useUtilityClasses = ownerState => {
+	const {
+		classes,
+		container,
+		direction,
+		item,
+		spacing,
+		wrap,
+		zeroMinWidth,
+		breakpoints
+	} = ownerState;
+	let spacingClasses = [];
+
+	// in case of grid item
+	if (container) {
+		spacingClasses = resolveSpacingClasses(spacing, breakpoints);
+	}
+	const breakpointsClasses = [];
+	breakpoints.forEach(breakpoint => {
+		const value = ownerState[breakpoint];
+		if (value) {
+			breakpointsClasses.push(`grid-${breakpoint}-${String(value)}`);
+		}
+	});
+	const slots = {
+		root: ['root', container && 'container', item && 'item', zeroMinWidth && 'zeroMinWidth', ...spacingClasses, direction !== 'row' && `direction-xs-${String(direction)}`, wrap !== 'wrap' && `wrap-xs-${String(wrap)}`, ...breakpointsClasses]
+	};
+	return composeClasses(slots, getGridUtilityClass, classes);
+};
+const Grid = /*#__PURE__*/React.forwardRef(function Grid(inProps, ref) {
+	const themeProps = useThemeProps({
+		props: inProps,
+		name: 'MuiGrid'
+	});
+	const {
+		breakpoints
+	} = useTheme();
+	const props = extendSxProp(themeProps);
+	const {
+			className,
+			columns: columnsProp,
+			columnSpacing: columnSpacingProp,
+			component = 'div',
+			container = false,
+			direction = 'row',
+			item = false,
+			rowSpacing: rowSpacingProp,
+			spacing = 0,
+			wrap = 'wrap',
+			zeroMinWidth = false
+		} = props,
+		other = _objectWithoutPropertiesLoose(props, _excluded);
+	const rowSpacing = rowSpacingProp || spacing;
+	const columnSpacing = columnSpacingProp || spacing;
+	const columnsContext = React.useContext(GridContext$1);
+
+	// columns set with default breakpoint unit of 12
+	const columns = container ? columnsProp || 12 : columnsContext;
+	const breakpointsValues = {};
+	const otherFiltered = _extends({}, other);
+	breakpoints.keys.forEach(breakpoint => {
+		if (other[breakpoint] != null) {
+			breakpointsValues[breakpoint] = other[breakpoint];
+			delete otherFiltered[breakpoint];
+		}
+	});
+	const ownerState = _extends({}, props, {
+		columns,
+		container,
+		direction,
+		item,
+		rowSpacing,
+		columnSpacing,
+		wrap,
+		zeroMinWidth,
+		spacing
+	}, breakpointsValues, {
+		breakpoints: breakpoints.keys
+	});
+	const classes = useUtilityClasses(ownerState);
+	return /*#__PURE__*/jsx(GridContext$1.Provider, {
+		value: columns,
+		children: /*#__PURE__*/jsx(GridRoot, _extends({
+			ownerState: ownerState,
+			className: clsx(classes.root, className),
+			as: component,
+			ref: ref
+		}, otherFiltered))
+	});
+});
+process.env.NODE_ENV !== "production" ? Grid.propTypes /* remove-proptypes */ = {
+	// ----------------------------- Warning --------------------------------
+	// | These PropTypes are generated from the TypeScript type definitions |
+	// |     To update them edit the d.ts file and run "yarn proptypes"     |
+	// ----------------------------------------------------------------------
+	/**
+	 * The content of the component.
+	 */
+	children: PropTypes.node,
+	/**
+	 * Override or extend the styles applied to the component.
+	 */
+	classes: PropTypes.object,
+	/**
+	 * @ignore
+	 */
+	className: PropTypes.string,
+	/**
+	 * The number of columns.
+	 * @default 12
+	 */
+	columns: PropTypes.oneOfType([PropTypes.arrayOf(PropTypes.number), PropTypes.number, PropTypes.object]),
+	/**
+	 * Defines the horizontal space between the type `item` components.
+	 * It overrides the value of the `spacing` prop.
+	 */
+	columnSpacing: PropTypes.oneOfType([PropTypes.arrayOf(PropTypes.oneOfType([PropTypes.number, PropTypes.string])), PropTypes.number, PropTypes.object, PropTypes.string]),
+	/**
+	 * The component used for the root node.
+	 * Either a string to use a HTML element or a component.
+	 */
+	component: PropTypes.elementType,
+	/**
+	 * If `true`, the component will have the flex *container* behavior.
+	 * You should be wrapping *items* with a *container*.
+	 * @default false
+	 */
+	container: PropTypes.bool,
+	/**
+	 * Defines the `flex-direction` style property.
+	 * It is applied for all screen sizes.
+	 * @default 'row'
+	 */
+	direction: PropTypes.oneOfType([PropTypes.oneOf(['column-reverse', 'column', 'row-reverse', 'row']), PropTypes.arrayOf(PropTypes.oneOf(['column-reverse', 'column', 'row-reverse', 'row'])), PropTypes.object]),
+	/**
+	 * If `true`, the component will have the flex *item* behavior.
+	 * You should be wrapping *items* with a *container*.
+	 * @default false
+	 */
+	item: PropTypes.bool,
+	/**
+	 * If a number, it sets the number of columns the grid item uses.
+	 * It can't be greater than the total number of columns of the container (12 by default).
+	 * If 'auto', the grid item's width matches its content.
+	 * If false, the prop is ignored.
+	 * If true, the grid item's width grows to use the space available in the grid container.
+	 * The value is applied for the `lg` breakpoint and wider screens if not overridden.
+	 * @default false
+	 */
+	lg: PropTypes.oneOfType([PropTypes.oneOf(['auto']), PropTypes.number, PropTypes.bool]),
+	/**
+	 * If a number, it sets the number of columns the grid item uses.
+	 * It can't be greater than the total number of columns of the container (12 by default).
+	 * If 'auto', the grid item's width matches its content.
+	 * If false, the prop is ignored.
+	 * If true, the grid item's width grows to use the space available in the grid container.
+	 * The value is applied for the `md` breakpoint and wider screens if not overridden.
+	 * @default false
+	 */
+	md: PropTypes.oneOfType([PropTypes.oneOf(['auto']), PropTypes.number, PropTypes.bool]),
+	/**
+	 * Defines the vertical space between the type `item` components.
+	 * It overrides the value of the `spacing` prop.
+	 */
+	rowSpacing: PropTypes.oneOfType([PropTypes.arrayOf(PropTypes.oneOfType([PropTypes.number, PropTypes.string])), PropTypes.number, PropTypes.object, PropTypes.string]),
+	/**
+	 * If a number, it sets the number of columns the grid item uses.
+	 * It can't be greater than the total number of columns of the container (12 by default).
+	 * If 'auto', the grid item's width matches its content.
+	 * If false, the prop is ignored.
+	 * If true, the grid item's width grows to use the space available in the grid container.
+	 * The value is applied for the `sm` breakpoint and wider screens if not overridden.
+	 * @default false
+	 */
+	sm: PropTypes.oneOfType([PropTypes.oneOf(['auto']), PropTypes.number, PropTypes.bool]),
+	/**
+	 * Defines the space between the type `item` components.
+	 * It can only be used on a type `container` component.
+	 * @default 0
+	 */
+	spacing: PropTypes.oneOfType([PropTypes.arrayOf(PropTypes.oneOfType([PropTypes.number, PropTypes.string])), PropTypes.number, PropTypes.object, PropTypes.string]),
+	/**
+	 * The system prop that allows defining system overrides as well as additional CSS styles.
+	 */
+	sx: PropTypes.oneOfType([PropTypes.arrayOf(PropTypes.oneOfType([PropTypes.func, PropTypes.object, PropTypes.bool])), PropTypes.func, PropTypes.object]),
+	/**
+	 * Defines the `flex-wrap` style property.
+	 * It's applied for all screen sizes.
+	 * @default 'wrap'
+	 */
+	wrap: PropTypes.oneOf(['nowrap', 'wrap-reverse', 'wrap']),
+	/**
+	 * If a number, it sets the number of columns the grid item uses.
+	 * It can't be greater than the total number of columns of the container (12 by default).
+	 * If 'auto', the grid item's width matches its content.
+	 * If false, the prop is ignored.
+	 * If true, the grid item's width grows to use the space available in the grid container.
+	 * The value is applied for the `xl` breakpoint and wider screens if not overridden.
+	 * @default false
+	 */
+	xl: PropTypes.oneOfType([PropTypes.oneOf(['auto']), PropTypes.number, PropTypes.bool]),
+	/**
+	 * If a number, it sets the number of columns the grid item uses.
+	 * It can't be greater than the total number of columns of the container (12 by default).
+	 * If 'auto', the grid item's width matches its content.
+	 * If false, the prop is ignored.
+	 * If true, the grid item's width grows to use the space available in the grid container.
+	 * The value is applied for all the screen sizes with the lowest priority.
+	 * @default false
+	 */
+	xs: PropTypes.oneOfType([PropTypes.oneOf(['auto']), PropTypes.number, PropTypes.bool]),
+	/**
+	 * If `true`, it sets `min-width: 0` on the item.
+	 * Refer to the limitations section of the documentation to better understand the use case.
+	 * @default false
+	 */
+	zeroMinWidth: PropTypes.bool
+} : void 0;
+if (process.env.NODE_ENV !== 'production') {
+	const requireProp = requirePropFactory('Grid', Grid);
+	// eslint-disable-next-line no-useless-concat
+	Grid['propTypes' + ''] = _extends({}, Grid.propTypes, {
+		direction: requireProp('container'),
+		lg: requireProp('item'),
+		md: requireProp('item'),
+		sm: requireProp('item'),
+		spacing: requireProp('container'),
+		wrap: requireProp('container'),
+		xs: requireProp('item'),
+		zeroMinWidth: requireProp('item')
+	});
+}
+var Grid$1 = Grid;
+
+function Footer() {
+	return (React__default.createElement(Box$1, null,
+		React__default.createElement(AppBar$1, {position: "static", color: "primary"},
+			React__default.createElement(Toolbar$1, null,
+				React__default.createElement(Grid$1, {container: true},
+					React__default.createElement(Grid$1, {item: true, xs: 9},
+						React__default.createElement(Grid$1, {container: true},
+							React__default.createElement(Grid$1, {item: true, xs: 2},
+								React__default.createElement(Typography$1, {
+									variant: "subtitle1",
+									component: "div"
+								}, "Home")),
+							React__default.createElement(Grid$1, {item: true, xs: 2},
+								React__default.createElement(Typography$1, {
+									variant: "subtitle1",
+									component: "div"
+								}, "About")),
+							React__default.createElement(Grid$1, {item: true, xs: 2},
+								React__default.createElement(Typography$1, {
+									variant: "subtitle1",
+									component: "div"
+								}, "Contact")),
+							React__default.createElement(Grid$1, {item: true, xs: 2},
+								React__default.createElement(Typography$1, {
+									variant: "subtitle1",
+									component: "div"
+								}, "Doctor Watch")))),
+					React__default.createElement(Grid$1, {item: true, xs: 3},
+						React__default.createElement(Typography$1, {
+							variant: "subtitle1",
+							component: "div"
+						}, "@Dentist Watch | All Rights Reserved")))))));
+}
+
+function HomePage() {
+	return (React__default.createElement(Box$1, {sx: {height: '3000px', backgroundColor: 'red'}}));
+}
+
+/******************************************************************************
+ Copyright (c) Microsoft Corporation.
+
+ Permission to use, copy, modify, and/or distribute this software for any
+ purpose with or without fee is hereby granted.
+
+ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+ REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+ AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+ INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+ LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ PERFORMANCE OF THIS SOFTWARE.
+ ***************************************************************************** */
+/* global Reflect, Promise */
+
+
+var __assign = function () {
+	__assign = Object.assign || function __assign(t) {
+		for (var s, i = 1, n = arguments.length; i < n; i++) {
+			s = arguments[i];
+			for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p)) t[p] = s[p];
+		}
+		return t;
+	};
+	return __assign.apply(this, arguments);
+};
+
+function __awaiter(thisArg, _arguments, P, generator) {
+	function adopt(value) {
+		return value instanceof P ? value : new P(function (resolve) {
+			resolve(value);
+		});
+	}
+
+	return new (P || (P = Promise))(function (resolve, reject) {
+		function fulfilled(value) {
+			try {
+				step(generator.next(value));
+			} catch (e) {
+				reject(e);
+			}
+		}
+
+		function rejected(value) {
+			try {
+				step(generator["throw"](value));
+			} catch (e) {
+				reject(e);
+			}
+		}
+
+		function step(result) {
+			result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+		}
+
+		step((generator = generator.apply(thisArg, _arguments || [])).next());
+	});
+}
+
+function __generator(thisArg, body) {
+	var _ = {
+		label: 0, sent: function () {
+			if (t[0] & 1) throw t[1];
+			return t[1];
+		}, trys: [], ops: []
+	}, f, y, t, g;
+	return g = {
+		next: verb(0),
+		"throw": verb(1),
+		"return": verb(2)
+	}, typeof Symbol === "function" && (g[Symbol.iterator] = function () {
+		return this;
+	}), g;
+
+	function verb(n) {
+		return function (v) {
+			return step([n, v]);
+		};
+	}
+
+	function step(op) {
+		if (f) throw new TypeError("Generator is already executing.");
+		while (g && (g = 0, op[0] && (_ = 0)), _) try {
+			if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+			if (y = 0, t) op = [op[0] & 2, t.value];
+			switch (op[0]) {
+				case 0:
+				case 1:
+					t = op;
+					break;
+				case 4:
+					_.label++;
+					return {value: op[1], done: false};
+				case 5:
+					_.label++;
+					y = op[1];
+					op = [0];
+					continue;
+				case 7:
+					op = _.ops.pop();
+					_.trys.pop();
+					continue;
+				default:
+					if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) {
+						_ = 0;
+						continue;
+					}
+					if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) {
+						_.label = op[1];
+						break;
+					}
+					if (op[0] === 6 && _.label < t[1]) {
+						_.label = t[1];
+						t = op;
+						break;
+					}
+					if (t && _.label < t[2]) {
+						_.label = t[2];
+						_.ops.push(op);
+						break;
+					}
+					if (t[2]) _.ops.pop();
+					_.trys.pop();
+					continue;
+			}
+			op = body.call(thisArg, _);
+		} catch (e) {
+			op = [6, e];
+			y = 0;
+		} finally {
+			f = t = 0;
+		}
+		if (op[0] & 5) throw op[1];
+		return {value: op[0] ? op[1] : void 0, done: true};
+	}
+}
+
+function Report() {
+	var _a = useState({
+		name: '',
+		location: '',
+		practice: '',
+		complaint: '',
+	}), form = _a[0], setForm = _a[1];
+
+	// These methods will update the state properties.
+	function updateForm(value) {
+		return setForm(function (prev) {
+			return __assign(__assign({}, prev), value);
+		});
+	}
+
+	// This function will handle the submission.
+	function onSubmit(e) {
+		return __awaiter(this, void 0, void 0, function () {
+			var newPerson;
+			return __generator(this, function (_a) {
+				switch (_a.label) {
+					case 0:
+						e.preventDefault();
+						newPerson = __assign({}, form);
+						return [4 /*yield*/, fetch("http://localhost:5055/record", {
+							method: "POST",
+							headers: {
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify(newPerson),
+						})
+							.catch(function (error) {
+								window.alert(error);
+							})];
+					case 1:
+						_a.sent();
+						setForm({
+							name: '',
+							location: '',
+							practice: '',
+							complaint: '',
+						});
+						return [2 /*return*/];
+				}
+			});
+		});
+	}
+
+	// This following section will display the form that takes the input from the user.
+	return (React__default.createElement("div", null,
+		React__default.createElement("h3", null, "Create New Record"),
+		React__default.createElement("form", {onSubmit: onSubmit},
+			React__default.createElement("div", {className: "form-group"},
+				React__default.createElement("label", {htmlFor: "name"}, "Name"),
+				React__default.createElement("input", {
+					type: "text",
+					className: "form-control",
+					id: "name",
+					value: form.name,
+					onChange: function (e) {
+						return updateForm({name: e.target.value});
+					}
+				})),
+			React__default.createElement("div", {className: "form-group"},
+				React__default.createElement("label", {htmlFor: "location"}, "Location"),
+				React__default.createElement("input", {
+					type: "text",
+					className: "form-control",
+					id: "location",
+					value: form.location,
+					onChange: function (e) {
+						return updateForm({location: e.target.value});
+					}
+				})),
+			React__default.createElement("div", {className: "form-group"},
+				React__default.createElement("label", {htmlFor: "practice"}, "Practice Name"),
+				React__default.createElement("input", {
+					type: "text",
+					className: "form-control",
+					id: "practice",
+					value: form.practice,
+					onChange: function (e) {
+						return updateForm({practice: e.target.value});
+					}
+				})),
+			React__default.createElement("div", {className: "form-group"},
+				React__default.createElement("label", {htmlFor: "complaint"}, "Complaint"),
+				React__default.createElement("input", {
+					type: "text",
+					className: "form-control",
+					id: "complaint",
+					value: form.complaint,
+					onChange: function (e) {
+						return updateForm({complaint: e.target.value});
+					}
+				})),
+			React__default.createElement("div", {className: "form-group"},
+				React__default.createElement("input", {
+					type: "submit",
+					value: "Create person",
+					className: "btn btn-primary"
+				})))));
+}
+
+function List() {
+	var _a = useState([]), records = _a[0], setRecords = _a[1];
+	// This method fetches the records from the database.
+	useEffect(function () {
+		function getRecords() {
+			return __awaiter(this, void 0, void 0, function () {
+				var response, message, records;
+				return __generator(this, function (_a) {
+					switch (_a.label) {
+						case 0:
+							return [4 /*yield*/, fetch("http://localhost:5055/record/")];
+						case 1:
+							response = _a.sent();
+							if (!response.ok) {
+								message = "An error occurred: ".concat(response.statusText);
+								window.alert(message);
+								return [2 /*return*/];
+							}
+							return [4 /*yield*/, response.json()];
+						case 2:
+							records = _a.sent();
+							setRecords(records);
+							return [2 /*return*/];
+					}
+				});
+			});
+		}
+
+		getRecords();
+	}, [records.length]);
+	return (React__default.createElement("div", null, records.map(function (record) {
+		return (React__default.createElement("div", null, record.name));
+	})));
+}
+
 var ProjectContext = React__default.createContext(null);
+
 function Application(_a) {
-    var projectName = _a.projectName;
-    return (React__default.createElement(React__default.Fragment, null,
-        React__default.createElement(ProjectContext.Provider, {value: projectName},
-            React__default.createElement(NavBar, null))));
+	var projectName = _a.projectName;
+	return (React__default.createElement(React__default.Fragment, null,
+		React__default.createElement(ProjectContext.Provider, {value: projectName},
+			React__default.createElement(NavBar, null),
+			React__default.createElement(BrowserRouter, null,
+				React__default.createElement(Routes, null,
+					React__default.createElement(Route, {
+						path: "/",
+						element: React__default.createElement(HomePage, null)
+					}),
+					React__default.createElement(Route, {
+						path: "/report",
+						element: React__default.createElement(Report, null)
+					}),
+					React__default.createElement(Route, {
+						path: "/list",
+						element: React__default.createElement(List, null)
+					}))),
+			React__default.createElement(Footer, null))));
 }
 
 export { Application };
