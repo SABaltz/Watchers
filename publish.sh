@@ -3,9 +3,9 @@ npm version patch
 npm publish
 cd ..
 cd dentist-watch
-npm upgrade
+ncu -u common-watch
 npm install
 cd ..
 cd doctor-watch
-npm upgrade
+ncu -u common-watch
 npm install
