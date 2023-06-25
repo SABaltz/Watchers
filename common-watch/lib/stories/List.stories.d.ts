@@ -1,6 +1,5 @@
-import type {StoryObj} from '@storybook/react';
+import type { StoryObj } from '@storybook/react';
 import List from "../components/List";
-
 declare const meta: {
     title: string;
     component: typeof List;

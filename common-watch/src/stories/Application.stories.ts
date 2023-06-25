@@ -15,11 +15,13 @@ type Story = StoryObj<typeof Application>;
 export const DentistWatch: Story = {
   args: {
     projectName: 'Dentist Watch',
+    alternativeSite: 'Doctor Watch'
   },
 };
 
 export const DoctorWatch: Story = {
   args: {
     projectName: 'Doctor Watch',
+    alternativeSite: 'Dentist Watch'
   },
 };

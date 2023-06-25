@@ -1,6 +1,5 @@
-import type {StoryObj} from '@storybook/react';
+import type { StoryObj } from '@storybook/react';
 import Report from "../components/Report";
-
 declare const meta: {
     title: string;
     component: typeof Report;

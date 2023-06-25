@@ -1,4 +1,4 @@
-import React from "react";
+import React, {useState} from "react";
 import {BrowserRouter, Route, Routes} from "react-router-dom";
 import NavBar from "./NavBar";
 import Footer from "./Footer";
@@ -8,10 +8,10 @@ import List from "./List";
 
 export const ProjectContext = React.createContext(null);
 
-export default function Application({projectName}) {
+export default function Application({projectName, alternativeSite}) {
     return (
         <>
-            <ProjectContext.Provider value={projectName}>
+            <ProjectContext.Provider value={{ projectName: projectName, alternativeSite: alternativeSite }}>
                 <NavBar/>
                 <BrowserRouter>
                     <Routes>

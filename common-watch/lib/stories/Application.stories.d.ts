@@ -1,6 +1,5 @@
-import type {StoryObj} from '@storybook/react';
+import type { StoryObj } from '@storybook/react';
 import Application from "../components/Application";
-
 declare const meta: {
     title: string;
     component: typeof Application;
