@@ -1,6 +1,5 @@
 import React from "react";
-export declare const ProjectContext: React.Context<any>;
-export default function Application({ projectName, alternativeSite }: {
-    projectName: any;
-    alternativeSite: any;
+
+export default function Application({context}: {
+    context: any;
 }): React.JSX.Element;

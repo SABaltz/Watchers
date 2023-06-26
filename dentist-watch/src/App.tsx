@@ -4,7 +4,10 @@ import {Application} from "common-watch";
 function App() {
     return (
         <>
-            <Application projectName={"Dentist Watch"} alternativeSite={"Doctor Watch"}></Application>
+            <Application context={{
+                projectName: 'Dentist Watch',
+                alternativeSite: 'Doctor Watch'
+            }}></Application>
         </>
     );
 }

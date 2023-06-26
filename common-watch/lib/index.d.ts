@@ -1,8 +1,7 @@
 import React from 'react';
 
-declare function Application({ projectName, alternativeSite }: {
-    projectName: any;
-    alternativeSite: any;
+declare function Application({context}: {
+    context: any;
 }): React.JSX.Element;
 
 export { Application };

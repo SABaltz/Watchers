@@ -2475,25 +2475,25 @@ function requireObjectAssign () {
           for (var i = 0; i < 10; i++) {
             test2['_' + String.fromCharCode(i)] = i;
           }
-			var order2 = Object.getOwnPropertyNames(test2).map(function (n) {
-				return test2[n];
-			});
-			if (order2.join('') !== '0123456789') {
-				return false;
-			}
+          var order2 = Object.getOwnPropertyNames(test2).map(function (n) {
+            return test2[n];
+          });
+          if (order2.join('') !== '0123456789') {
+            return false;
+          }
 
-			// https://bugs.chromium.org/p/v8/issues/detail?id=3056
-			var test3 = {};
-			'abcdefghijklmnopqrst'.split('').forEach(function (letter) {
-				test3[letter] = letter;
-			});
-			if (Object.keys(Object.assign({}, test3)).join('') !==
-					'abcdefghijklmnopqrst') {
-				return false;
-			}
+          // https://bugs.chromium.org/p/v8/issues/detail?id=3056
+          var test3 = {};
+          'abcdefghijklmnopqrst'.split('').forEach(function (letter) {
+            test3[letter] = letter;
+          });
+          if (Object.keys(Object.assign({}, test3)).join('') !==
+              'abcdefghijklmnopqrst') {
+            return false;
+          }
 
-			return true;
-		} catch (err) {
+          return true;
+        } catch (err) {
 			// We don't expect any of the above to throw, but better to be safe.
 			return false;
 		}
@@ -7393,7 +7393,6 @@ class ModalManager {
     }
     return modalIndex;
   }
-
   isTopModal(modal) {
     return this.modals.length > 0 && this.modals[this.modals.length - 1] === modal;
   }
@@ -7451,8 +7450,8 @@ const defaultManager = new ModalManager();
 const Modal$2 = /*#__PURE__*/React__namespace.forwardRef(function Modal(props, forwardedRef) {
   var _props$ariaHidden, _slots$root;
   const {
-      children,
-      closeAfterTransition = false,
+        children,
+        closeAfterTransition = false,
         container,
         disableAutoFocus = false,
         disableEnforceFocus = false,
@@ -10752,17 +10751,14 @@ function createBreakpoints(breakpoints) {
       other = _objectWithoutPropertiesLoose(breakpoints, _excluded$x);
   const sortedValues = sortBreakpointsValues(values);
   const keys = Object.keys(sortedValues);
-
   function up(key) {
     const value = typeof values[key] === 'number' ? values[key] : key;
     return `@media (min-width:${value}${unit})`;
   }
-
   function down(key) {
     const value = typeof values[key] === 'number' ? values[key] : key;
     return `@media (max-width:${value - step / 100}${unit})`;
   }
-
   function between(start, end) {
     const endIndex = keys.indexOf(end);
     return `@media (min-width:${typeof values[start] === 'number' ? values[start] : start}${unit}) and ` + `(max-width:${(endIndex !== -1 && typeof values[keys[endIndex]] === 'number' ? values[keys[endIndex]] : end) - step / 100}${unit})`;
@@ -12565,10 +12561,10 @@ function createContainer(options = {}) {
           as: component
           // @ts-ignore module augmentation fails if custom breakpoints are used
           ,
-        ownerState: ownerState,
-        className: clsx(classes.root, className),
-        ref: ref
-      }, other))
+          ownerState: ownerState,
+          className: clsx(classes.root, className),
+          ref: ref
+        }, other))
     );
   });
   process.env.NODE_ENV !== "production" ? Container.propTypes /* remove-proptypes */ = {
@@ -15252,15 +15248,15 @@ const ButtonBase = /*#__PURE__*/React__namespace.forwardRef(function ButtonBase(
     name: 'MuiButtonBase'
   });
   const {
-      action,
-      centerRipple = false,
-      children,
-      className,
-      component = 'button',
-      disabled = false,
-      disableRipple = false,
-      disableTouchRipple = false,
-      focusRipple = false,
+        action,
+        centerRipple = false,
+        children,
+        className,
+        component = 'button',
+        disabled = false,
+        disableRipple = false,
+        disableTouchRipple = false,
+        focusRipple = false,
         LinkComponent = 'a',
         onBlur,
         onClick,
@@ -17111,12 +17107,12 @@ const Modal = /*#__PURE__*/React__namespace.forwardRef(function Modal(inProps, r
     props: inProps
   });
   const {
-      BackdropComponent = ModalBackdrop,
-      BackdropProps,
-      classes,
-      className,
-      closeAfterTransition = false,
-      children,
+        BackdropComponent = ModalBackdrop,
+        BackdropProps,
+        classes,
+        className,
+        closeAfterTransition = false,
+        children,
         container,
         component,
         components = {},
@@ -17439,13 +17435,13 @@ const Popover = /*#__PURE__*/React__namespace.forwardRef(function Popover(inProp
     name: 'MuiPopover'
   });
   const {
-      action,
-      anchorEl,
-      anchorOrigin = {
-        vertical: 'top',
-        horizontal: 'left'
-      },
-      anchorPosition,
+        action,
+        anchorEl,
+        anchorOrigin = {
+          vertical: 'top',
+          horizontal: 'left'
+        },
+        anchorPosition,
         anchorReference = 'anchorEl',
         children,
         className,
@@ -19467,20 +19463,22 @@ function composeEventHandler(handler, eventHandler) {
 
 // TODO v6: Remove PopperComponent, PopperProps, TransitionComponent and TransitionProps.
 const Tooltip = /*#__PURE__*/React__namespace.forwardRef(function Tooltip(inProps, ref) {
-  var _ref, _slots$popper, _ref2, _ref3, _slots$transition, _ref4, _slots$tooltip, _ref5, _slots$arrow, _slotProps$popper, _ref6, _slotProps$popper2, _slotProps$transition, _slotProps$tooltip, _ref7, _slotProps$tooltip2, _slotProps$arrow, _ref8, _slotProps$arrow2;
+  var _ref, _slots$popper, _ref2, _ref3, _slots$transition, _ref4, _slots$tooltip, _ref5, _slots$arrow,
+      _slotProps$popper, _ref6, _slotProps$popper2, _slotProps$transition, _slotProps$tooltip, _ref7,
+      _slotProps$tooltip2, _slotProps$arrow, _ref8, _slotProps$arrow2;
   const props = useThemeProps({
     props: inProps,
     name: 'MuiTooltip'
   });
   const {
-      arrow = false,
-      children: childrenProp,
-      components = {},
-      componentsProps = {},
-      describeChild = false,
-      disableFocusListener = false,
-      disableHoverListener = false,
-      disableInteractive: disableInteractiveProp = false,
+        arrow = false,
+        children: childrenProp,
+        components = {},
+        componentsProps = {},
+        describeChild = false,
+        disableFocusListener = false,
+        disableHoverListener = false,
+        disableInteractive: disableInteractiveProp = false,
         disableTouchListener = false,
         enterDelay = 100,
         enterNextDelay = 0,
@@ -20911,9 +20909,9 @@ const LinkRoot = styled$1(Typography$1, {
     return [styles.root, styles[`underline${capitalize(ownerState.underline)}`], ownerState.component === 'button' && styles.button];
   }
 })(({
-      theme,
-      ownerState
-    }) => {
+                               theme,
+                               ownerState
+                             }) => {
   return _extends({}, ownerState.underline === 'none' && {
     textDecoration: 'none'
   }, ownerState.underline === 'hover' && {
@@ -21088,13 +21086,14 @@ var pages = [{text: 'Map', href: '/map'}, {text: 'Search', href: '/search'}, {
   href: '/report'
 }, {text: 'Worst 100', href: '/worst100'}];
 var settings = ['Profile', 'Account', 'Logout'];
-function NavBar() {
-    var projectName = React.useContext(ProjectContext).projectName;
-    var _a = React.useState(null), anchorElNav = _a[0], setAnchorElNav = _a[1];
-    var _b = React.useState(null), anchorElUser = _b[0], setAnchorElUser = _b[1];
-    var handleOpenNavMenu = function (event) {
-        setAnchorElNav(event.currentTarget);
-    };
+
+function NavBar(_a) {
+  var context = _a.context;
+  var _b = React.useState(null), anchorElNav = _b[0], setAnchorElNav = _b[1];
+  var _c = React.useState(null), anchorElUser = _c[0], setAnchorElUser = _c[1];
+  var handleOpenNavMenu = function (event) {
+    setAnchorElNav(event.currentTarget);
+  };
   var handleOpenUserMenu = function (event) {
     setAnchorElUser(event.currentTarget);
   };
@@ -21117,7 +21116,7 @@ function NavBar() {
                   color: 'inherit',
                   textDecoration: 'none'
                 }
-              }, projectName),
+              }, context.projectName),
               React.createElement(Box$1, {sx: {flexGrow: 1, display: {xs: 'flex', md: 'none'}}},
                   React.createElement(IconButton$1, {
                         size: "large",
@@ -21154,7 +21153,7 @@ function NavBar() {
                   color: 'inherit',
                   textDecoration: 'none',
                 }
-              }, projectName),
+              }, context.projectName),
               React.createElement(Box$1, {
                 sx: {
                   flexGrow: 1,
@@ -21186,35 +21185,36 @@ function NavBar() {
                   })))))));
 }
 
-function Footer() {
-    var _a = React.useContext(ProjectContext), projectName = _a.projectName, alternativeSite = _a.alternativeSite;
-    return (React.createElement(Box$1, null,
-        React.createElement(AppBar$1, {position: "static", color: "primary"},
-            React.createElement(Toolbar$1, null,
-                React.createElement(Grid$1, {container: true},
-                    React.createElement(Grid$1, {item: true, xs: 9},
-                        React.createElement(Grid$1, {container: true},
-                            React.createElement(Grid$1, {item: true, xs: 2},
-                                React.createElement(Typography$1, {variant: "subtitle1", component: "div"}, "Home")),
-                            React.createElement(Grid$1, {item: true, xs: 2},
-                                React.createElement(Typography$1, {variant: "subtitle1", component: "div"}, "About")),
-                            React.createElement(Grid$1, {item: true, xs: 2},
-                                React.createElement(Typography$1, {variant: "subtitle1", component: "div"}, "Contact")),
-                            React.createElement(Grid$1, {item: true, xs: 2},
-                                React.createElement(Typography$1, {
-                                  variant: "subtitle1",
-                                  component: "div"
-                                }, alternativeSite)))),
-                    React.createElement(Grid$1, {item: true, xs: 3},
-                        React.createElement(Typography$1, {variant: "subtitle1", component: "div"},
-                            React.createElement(Link$1, {href: "".concat(alternativeSite.toLowerCase().trim(), ".org")},
-                                "@",
-                                projectName,
-                                " | All Rights Reserved"))))))));
+function Footer(_a) {
+  var context = _a.context;
+  return (React.createElement(Box$1, null,
+      React.createElement(AppBar$1, {position: "static", color: "primary"},
+          React.createElement(Toolbar$1, null,
+              React.createElement(Grid$1, {container: true},
+                  React.createElement(Grid$1, {item: true, xs: 9},
+                      React.createElement(Grid$1, {container: true},
+                          React.createElement(Grid$1, {item: true, xs: 2},
+                              React.createElement(Typography$1, {variant: "subtitle1", component: "div"}, "Home")),
+                          React.createElement(Grid$1, {item: true, xs: 2},
+                              React.createElement(Typography$1, {variant: "subtitle1", component: "div"}, "About")),
+                          React.createElement(Grid$1, {item: true, xs: 2},
+                              React.createElement(Typography$1, {variant: "subtitle1", component: "div"}, "Contact")),
+                          React.createElement(Grid$1, {item: true, xs: 2},
+                              React.createElement(Typography$1, {textAlign: "center"},
+                                  React.createElement(Link$1, {
+                                    sx: {color: 'white'},
+                                    href: "www.".concat(context.alternativeSite.toLowerCase().trim(), ".org")
+                                  }, context.alternativeSite))))),
+                  React.createElement(Grid$1, {item: true, xs: 3},
+                      React.createElement(Typography$1, {variant: "subtitle1", component: "div"},
+                          "@",
+                          context.projectName,
+                          " | All Rights Reserved")))))));
 }
 
-function HomePage() {
-    return (React.createElement(Box$1, { sx: { height: '3000px', backgroundColor: 'red' } }));
+function HomePage(_a) {
+  _a.context;
+  return (React.createElement(Box$1, {sx: {height: '3000px', backgroundColor: 'red'}}));
 }
 
 /******************************************************************************
@@ -21381,18 +21381,16 @@ function List() {
     })));
 }
 
-var ProjectContext = React.createContext(null);
 function Application(_a) {
-    var projectName = _a.projectName, alternativeSite = _a.alternativeSite;
-    return (React.createElement(React.Fragment, null,
-        React.createElement(ProjectContext.Provider, { value: { projectName: projectName, alternativeSite: alternativeSite } },
-            React.createElement(NavBar, null),
-            React.createElement(BrowserRouter, null,
-                React.createElement(Routes, null,
-                    React.createElement(Route, { path: "/", element: React.createElement(HomePage, null) }),
-                    React.createElement(Route, { path: "/report", element: React.createElement(Report, null) }),
-                    React.createElement(Route, { path: "/list", element: React.createElement(List, null) }))),
-            React.createElement(Footer, null))));
+  var context = _a.context;
+  return (React.createElement(React.Fragment, null,
+      React.createElement(NavBar, {context: context}),
+      React.createElement(BrowserRouter, null,
+          React.createElement(Routes, null,
+              React.createElement(Route, {path: "/", element: React.createElement(HomePage, {context: context})}),
+              React.createElement(Route, {path: "/report", element: React.createElement(Report, null)}),
+              React.createElement(Route, {path: "/list", element: React.createElement(List, null)}))),
+      React.createElement(Footer, {context: context})));
 }
 
 exports.Application = Application;

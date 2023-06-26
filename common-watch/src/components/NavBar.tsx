@@ -1,4 +1,4 @@
-import React, {useContext, useState} from "react";
+import React, {useState} from "react";
 import AppBar from '@mui/material/AppBar';
 import Box from '@mui/material/Box';
 import Toolbar from '@mui/material/Toolbar';
@@ -12,7 +12,6 @@ import Button from '@mui/material/Button';
 import Tooltip from '@mui/material/Tooltip';
 import MenuItem from '@mui/material/MenuItem';
 // import AdbIcon from '@mui/icons-material/Adb';
-import {ProjectContext} from "./Application";
 import {Link} from "@mui/material";
 
 const pages = [{text: 'Map', href: '/map'}, {text: 'Search', href: '/search'}, {
@@ -21,9 +20,7 @@ const pages = [{text: 'Map', href: '/map'}, {text: 'Search', href: '/search'}, {
 }, {text: 'Worst 100', href: '/worst100'}];
 const settings = ['Profile', 'Account', 'Logout'];
 
-export default function NavBar() {
-    const {projectName} = useContext(ProjectContext);
-
+export default function NavBar({context}) {
     const [anchorElNav, setAnchorElNav] = useState(null);
     const [anchorElUser, setAnchorElUser] = useState(null);
 
@@ -61,7 +58,7 @@ export default function NavBar() {
                             color: 'inherit',
                             textDecoration: 'none'
                         }}>
-                        {projectName}
+                        {context.projectName}
                     </Typography>
 
                     <Box sx={{flexGrow: 1, display: {xs: 'flex', md: 'none'}}}>
@@ -120,7 +117,7 @@ export default function NavBar() {
                             textDecoration: 'none',
                         }}
                     >
-                        {projectName}
+                        {context.projectName}
                     </Typography>
                     <Box sx={{flexGrow: 1, display: {xs: 'none', md: 'flex'}}}>
                         {pages.map((page, index) => (
