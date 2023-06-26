@@ -1,2 +1,5 @@
-www.dentistwatch.org    www.dentistwatch.org/
-www.doctorwatch.org    www.doctorwatch.org/
+/   /index.html 200
+/report   /index.html 200
+/map   /index.html 200
+/search   /index.html 200
+/list   /index.html 200
