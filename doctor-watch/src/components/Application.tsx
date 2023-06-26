@@ -16,15 +16,6 @@ export default function Application({context}) {
         <>
             <ThemeProvider theme={context.projectName === "Doctor Watch" ? doctorTheme : dentistTheme}>
                 <NavBar context={context}/>
-                {/*<BrowserRouter>*/}
-                {/*    <Routes>*/}
-                {/*        <Route path=":context" element={<HomePageWrapper/>}/>*/}
-                {/*        <Route path="/report" element={<Report/>}/>*/}
-                {/*        <Route path="/map" element={<Map/>}/>*/}
-                {/*        <Route path="/search" element={<Search/>}/>*/}
-                {/*        <Route path="/list" element={<List/>}/>*/}
-                {/*    </Routes>*/}
-                {/*</BrowserRouter>*/}
                 <Route path="/"><HomePage context={context}/></Route>
                 <Route path="/report"><Report/></Route>
                 <Route path="/map"><Map/></Route>
