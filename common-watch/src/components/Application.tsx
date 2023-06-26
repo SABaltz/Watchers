@@ -5,6 +5,8 @@ import Footer from "./Footer";
 import HomePage from "./HomePage";
 import Report from "./Report";
 import List from "./List";
+import Search from "./Search";
+import Map from "./Map";
 
 
 export default function Application({context}) {
@@ -16,6 +18,8 @@ export default function Application({context}) {
                 <Routes>
                     <Route path="/" element={<HomePage context={context}/>}/>
                     <Route path="/report" element={<Report/>}/>
+                    <Route path="/map" element={<Map/>}/>
+                    <Route path="/search" element={<Search/>}/>
                     <Route path="/list" element={<List/>}/>
                 </Routes>
             </BrowserRouter>
