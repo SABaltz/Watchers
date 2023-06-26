@@ -4,11 +4,9 @@ import commonjs from "@rollup/plugin-commonjs";
 import typescript from "@rollup/plugin-typescript";
 import postcss from "rollup-plugin-postcss";
 import dts from "rollup-plugin-dts";
+import {createRequire} from 'node:module';
+import image from "@rollup/plugin-image";
 
-// This is required to read package.json file when
-// using Native ES modules in Node.js
-// https://rollupjs.org/command-line-interface/#importing-package-json
-import { createRequire } from 'node:module';
 const requireFile = createRequire(import.meta.url);
 const packageJson = requireFile('./package.json');
 
@@ -28,6 +26,7 @@ export default [{
         }
     ],
     plugins: [
+        image(),
         peerDepsExternal(),
         resolve(),
         commonjs(),
@@ -38,7 +37,7 @@ export default [{
     ]
 }, {
     input: 'lib/index.d.ts',
-    output: [{ file: 'lib/index.d.ts', format: 'es' }],
+    output: [{file: 'lib/index.d.ts', format: 'es'}],
     plugins: [dts()],
     external: [/\.css$/]
 }];
