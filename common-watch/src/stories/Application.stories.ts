@@ -25,8 +25,8 @@ export const DentistWatch: Story = {
 export const DoctorWatch: Story = {
     args: {
         context: {
-            projectName: 'Dentist Watch',
-            alternativeSite: 'Doctor Watch'
+            projectName: 'Doctor Watch',
+            alternativeSite: 'Dentist Watch'
         }
     },
 };
