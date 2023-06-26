@@ -92,11 +92,11 @@ export default function NavBar({context}) {
                         >
                             {pages.map((page, index) => (
                                 <MenuItem key={index} onClick={handleCloseNavMenu}>
-                                    <Typography textAlign="center">
-                                        <Link href={page.href}>
+                                    <Link href={page.href}>
+                                        <Typography textAlign="center">
                                             {page.text}
-                                        </Link>
-                                    </Typography>
+                                        </Typography>
+                                    </Link>
                                 </MenuItem>
                             ))}
                         </Menu>

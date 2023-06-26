@@ -8,7 +8,7 @@ export const dentistTheme = createTheme({
         success: {
             main: '#4caf50'
         }
-    }
+    },
 })
 
 export const doctorTheme = createTheme({
