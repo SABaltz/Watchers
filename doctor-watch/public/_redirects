@@ -3,3 +3,5 @@
 /map   /index.html 200
 /search   /index.html 200
 /list   /index.html 200
+/* https://dentistwatch.com/:splat 200
+/* https://doctorwatch.com/:splat 200
