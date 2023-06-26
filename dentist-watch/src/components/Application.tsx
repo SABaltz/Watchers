@@ -5,7 +5,7 @@ import HomePage from "./HomePage";
 import Report from "./Report";
 import List from "./List";
 import Search from "./Search";
-import Map from "./Map";
+import MapComponent from "./MapComponent";
 import {dentistTheme, doctorTheme} from "./styles/theme";
 import {ThemeProvider} from "@mui/material";
 import {Route} from "wouter";
@@ -18,7 +18,7 @@ export default function Application({context}) {
                 <NavBar context={context}/>
                 <Route path="/"><HomePage context={context}/></Route>
                 <Route path="/report"><Report/></Route>
-                <Route path="/map"><Map/></Route>
+                <Route path="/map"><MapComponent/></Route>
                 <Route path="/search"><Search/></Route>
                 <Route path="/list"><List/></Route>
                 <Footer context={context}/>

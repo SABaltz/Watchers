@@ -1,4 +1,4 @@
-import { MongoClient } from "mongodb";
+import {MongoClient} from "mongodb";
 
 const connectionString = process.env.ATLAS_URI || "";
 
@@ -8,7 +8,7 @@ let conn;
 try {
     conn = await client.connect();
     console.log("Database successfully connected")
-} catch(e) {
+} catch (e) {
     console.log("Turn off your vpn")
     console.error(e);
 }

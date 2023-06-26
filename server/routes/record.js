@@ -1,6 +1,6 @@
 import express from "express";
 import db from "../data_base/connection.js";
-import { ObjectId } from "mongodb";
+import {ObjectId} from "mongodb";
 
 const router = express.Router();
 
@@ -37,8 +37,8 @@ router.post("/", async (req, res) => {
 
 // This section will help you update a record by id.
 router.patch("/:id", async (req, res) => {
-    const query = { _id: new ObjectId(req.params.id) };
-    const updates =  {
+    const query = {_id: new ObjectId(req.params.id)};
+    const updates = {
         $set: {
             name: req.body.name,
             location: req.body.location,
@@ -55,7 +55,7 @@ router.patch("/:id", async (req, res) => {
 
 // This section will help you delete a record
 router.delete("/:id", async (req, res) => {
-    const query = { _id: new ObjectId(req.params.id) };
+    const query = {_id: new ObjectId(req.params.id)};
 
     const collection = db.collection("dentists");
     let result = await collection.deleteOne(query);
